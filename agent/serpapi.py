@@ -17,7 +17,7 @@ def search(query: str, api_key: str | None = None, num: int = 3) -> list[dict]:
     resp = requests.get(
         "https://serpapi.com/search.json",
         params={"engine": "google", "q": query, "api_key": key, "num": num},
-        timeout=20,
+        timeout=8,
     )
     resp.raise_for_status()
     data = resp.json()

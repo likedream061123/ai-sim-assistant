@@ -491,7 +491,8 @@ def _show_sources(scenario: str, given: dict):
         st.dataframe(rows, hide_index=True)
 
 
-def render_result(scenario: str, params: dict, note: str = "", can_apply: bool = False):
+def render_result(scenario: str, params: dict, note: str = "",
+                  can_apply: bool = False, manualize: bool = False):
     if note:
         st.info(note)
     try:
@@ -531,11 +532,13 @@ def render_result(scenario: str, params: dict, note: str = "", can_apply: bool =
     adv = design.advice(scenario, res["data"])
     if adv:
         st.warning(adv["message"])
+        # 按钮回调走 on_click：点按钮重跑脚本时，render_result 不在执行路径上（「计算」
+        # 按钮未被点击，主流程不会再次进入本函数），返回值分支的 advice_apply 永远写
+        # 不进 session_state；on_click 在点击当下就写入，重跑由主流程 applied 分支消费。
         if can_apply and adv.get("adjust"):
-            if st.button(f"⚡ 一键应用：{adv['label']}",
-                         key=f"apply_{scenario}", type="primary", use_container_width=True):
-                st.session_state["advice_apply"] = adv["adjust"]
-                st.rerun()
+            st.button(f"⚡ 一键应用：{adv['label']}",
+                      key=f"apply_{scenario}", type="primary", use_container_width=True,
+                      on_click=_apply_advice, args=(adv["adjust"],))
 
     _show_sources(scenario, params)
     try:
@@ -547,6 +550,33 @@ def render_result(scenario: str, params: dict, note: str = "", can_apply: bool =
         st.info(text)
     except Exception:
         pass
+    # AI 解析模式专属：一键把参数带到手动表单微调（完整工作流闭环）
+    if manualize:
+        if st.button("✏️ 切到手动模式微调参数", key="manualize_btn", use_container_width=True):
+            st.session_state["last_parse"] = {
+                "scenario": scenario,
+                "params": {**ENGINE_DEFAULTS[scenario], **params},
+            }
+            st.session_state["input_mode"] = "手动输入"
+            st.session_state["scenario_select"] = SCENARIOS_REV.get(scenario, list(SCENARIOS)[0])
+            st.rerun()
+
+
+def _apply_advice(adjust: dict):
+    """「一键应用」on_click 回调：点击当下把调整参数写入 session_state。
+
+    用 on_click 而非按钮返回值分支，是因为 render_result 只在「计算」按钮被点时
+    才会被调用；点「一键应用」重跑脚本时 render_result 不在执行路径上，返回值
+    分支永远拿不到点击。on_click 在点击瞬间写入，主流程的 applied 分支消费。
+    """
+    st.session_state["advice_apply"] = adjust
+
+
+def _clamp(v, lo, hi):
+    """把 AI 解析的参数 clamp 进 number_input 允许范围，越界不炸。"""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return min(hi, max(lo, float(v)))
+    return lo
 
 
 def _fill_example(text: str):
@@ -567,7 +597,8 @@ st.markdown("""
 <div class="hero-glow"></div>
 """, unsafe_allow_html=True)
 
-mode = st.radio("输入方式", ["自然语言", "手动输入"], horizontal=True, label_visibility="collapsed")
+mode = st.radio("输入方式", ["自然语言", "手动输入"], horizontal=True,
+                label_visibility="collapsed", key="input_mode")
 
 if mode == "自然语言":
     st.text_area(
@@ -589,7 +620,11 @@ if mode == "自然语言":
                 err = str(e)
                 s.update(label=f"解析失败：{err}", state="error", expanded=False)
         if parsed:
-            render_result(parsed["scenario"], parsed.get("params", {}))
+            st.session_state["last_parse"] = {
+                "scenario": parsed["scenario"],
+                "params": {**ENGINE_DEFAULTS.get(parsed["scenario"], {}), **parsed.get("params", {})},
+            }
+            render_result(parsed["scenario"], parsed.get("params", {}), manualize=True)
         else:
             st.warning(f"{err} —— 请改用手动输入。")
 
@@ -605,28 +640,32 @@ if mode == "自然语言":
             st.button(sc, key=f"ex_{sc}", on_click=_fill_example, args=(q,), use_container_width=True)
 
 else:
-    scenario_label = st.selectbox("场景", list(SCENARIOS))
+    scenario_label = st.selectbox("场景", list(SCENARIOS), key="scenario_select")
     scenario = SCENARIOS[scenario_label]
+    # 上次 AI 解析/计算过的参数（跨模式记忆，表单用它做默认值；缺省回落到引擎默认值，
+    # 避免首次打开手动模式时所有输入框都落在下限，得到一个离谱的边界工况）
+    _last = {**ENGINE_DEFAULTS[scenario],
+             **((st.session_state.get("last_parse") or {}).get("params") or {})}
     params = {}
     if scenario == "pendulum":
         c1, c2, c3 = st.columns(3)
-        params["th0_deg"] = c1.number_input("初始角度 θ₀ (°)", 0.0, 180.0, 120.0)
-        params["w0"] = c2.number_input("初始角速度 ω₀ (rad/s)", 0.0, 20.0, 0.0)
-        params["t_end"] = c3.number_input("时长 (s)", 1.0, 60.0, 20.0)
+        params["th0_deg"] = c1.number_input("初始角度 θ₀ (°)", 0.0, 180.0, _clamp(_last.get("th0_deg"), 0.0, 180.0))
+        params["w0"] = c2.number_input("初始角速度 ω₀ (rad/s)", 0.0, 20.0, _clamp(_last.get("w0"), 0.0, 20.0))
+        params["t_end"] = c3.number_input("时长 (s)", 1.0, 60.0, _clamp(_last.get("t_end"), 1.0, 60.0))
     elif scenario == "heat":
         c1, c2, c3 = st.columns(3)
-        params["L"] = c1.number_input("钢件半宽 (m)", 0.01, 1.0, 0.1, format="%.3f")
-        params["T0"] = c2.number_input("初始温度 (°C)", 100.0, 1500.0, 800.0)
-        params["T_wall"] = c3.number_input("介质温度 (°C)", 0.0, 500.0, 20.0)
-        params["T_target"] = st.number_input("目标温度 (°C)", 0.0, 1500.0, 100.0)
+        params["L"] = c1.number_input("钢件半宽 (m)", 0.01, 1.0, _clamp(_last.get("L"), 0.01, 1.0), format="%.3f")
+        params["T0"] = c2.number_input("初始温度 (°C)", 100.0, 1500.0, _clamp(_last.get("T0"), 100.0, 1500.0))
+        params["T_wall"] = c3.number_input("介质温度 (°C)", 0.0, 500.0, _clamp(_last.get("T_wall"), 0.0, 500.0))
+        params["T_target"] = st.number_input("目标温度 (°C)", 0.0, 1500.0, _clamp(_last.get("T_target"), 0.0, 1500.0))
     elif scenario == "beam":
         c1, c2, c3 = st.columns(3)
-        params["L"] = c1.number_input("梁长 (m)", 0.1, 20.0, 4.0)
-        params["P"] = c2.number_input("集中荷载 (N)", 100.0, 1e6, 10000.0, format="%.0f")
-        params["a"] = c3.number_input("荷载距左端 (m)", 0.1, 19.9, 1.5)
+        params["L"] = c1.number_input("梁长 (m)", 0.1, 20.0, _clamp(_last.get("L"), 0.1, 20.0))
+        params["P"] = c2.number_input("集中荷载 (N)", 100.0, 1e6, _clamp(_last.get("P"), 100.0, 1e6), format="%.0f")
+        params["a"] = c3.number_input("荷载距左端 (m)", 0.1, 19.9, _clamp(_last.get("a"), 0.1, 19.9))
         c4, c5 = st.columns(2)
-        params["E"] = c4.number_input("弹性模量 E (Pa)", 1e9, 1e12, 200e9, format="%.3g")
-        params["I"] = c5.number_input("惯性矩 I (m4)", 1e-8, 1.0, 5e-4, format="%.3g")
+        params["E"] = c4.number_input("弹性模量 E (Pa)", 1e9, 1e12, _clamp(_last.get("E"), 1e9, 1e12), format="%.3g")
+        params["I"] = c5.number_input("惯性矩 I (m4)", 1e-8, 1.0, _clamp(_last.get("I"), 1e-8, 1.0), format="%.3g")
         if st.button("SerpApi 查钢梁典型参数"):
             try:
                 from agent import serpapi
@@ -639,15 +678,29 @@ else:
                 st.error(f"SerpApi 查询失败：{e}")
     elif scenario == "vessel":
         c1, c2, c3 = st.columns(3)
-        params["P"] = c1.number_input("内压 (Pa)", 1e4, 1e8, 1e6, format="%.3g")
-        params["D"] = c2.number_input("内径 (m)", 0.1, 10.0, 1.0)
-        params["sigma_allow"] = c3.number_input("许用应力 (Pa)", 1e7, 1e9, 100e6, format="%.3g")
+        params["P"] = c1.number_input("内压 (Pa)", 1e4, 1e8, _clamp(_last.get("P"), 1e4, 1e8), format="%.3g")
+        params["D"] = c2.number_input("内径 (m)", 0.1, 10.0, _clamp(_last.get("D"), 0.1, 10.0))
+        params["sigma_allow"] = c3.number_input("许用应力 (Pa)", 1e7, 1e9, _clamp(_last.get("sigma_allow"), 1e7, 1e9), format="%.3g")
+        # 校核模式：给「给定壁厚」→ 算实际应力是否超许用（补全 safe/advice 链路）
+        adv_t = st.session_state.get("advice_apply", {}).get("t_given")
+        do_check = st.checkbox("校核给定壁厚", value=bool(adv_t or _last.get("t_given")))
+        if do_check:
+            params["t_given"] = st.number_input(
+                "给定壁厚 t (m)", 0.001, 0.5, _clamp(adv_t or _last.get("t_given") or 0.006, 0.001, 0.5),
+                format="%.4f")
     _calc = st.columns([5, 1, 2])
-    # 「一键应用建议」：advice 按钮把调整参数存入 session_state 并 rerun，这里消费后自动重算
+    # 「一键应用建议」：advice 按钮把调整参数存入 session_state 并 rerun，这里消费后
+    # 更新 last_parse（输入框同步显示新值）+ auto_run 触发自动重算。
     applied = st.session_state.pop("advice_apply", None)
     if applied:
         params.update(applied)
-        st.success("已应用设计建议：" + "，".join(f"{k} = {v:.3g}" for k, v in applied.items())
+        st.session_state["last_parse"] = {"scenario": scenario, "params": {**params}}
+        st.session_state["last_applied"] = applied
+        st.session_state["auto_run"] = True
+        st.rerun()
+    if st.session_state.pop("auto_run", False):
+        la = st.session_state.pop("last_applied", {}) or {}
+        st.success("已应用设计建议：" + "，".join(f"{k} = {v:.3g}" for k, v in la.items())
                    + "，结果已重算（可在上方输入框继续微调）。")
         render_result(scenario, params, can_apply=True)
     elif _calc[2].button("计算", type="primary", use_container_width=True):

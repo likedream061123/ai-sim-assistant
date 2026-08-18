@@ -90,3 +90,20 @@ def test_advice_heat_not_reached():
 def test_advice_vessel_and_pendulum_none():
     assert design.advice("vessel", vessel.solve()["data"]) is None
     assert design.advice("pendulum", pendulum.solve()["data"]) is None
+
+
+def test_advice_vessel_over_limit():
+    """校核模式：给定壁厚太薄 → 建议加厚到 t_req×1.25。"""
+    d = vessel.solve({"P": 1e6, "D": 1.0, "sigma_allow": 100e6, "t_given": 0.002})["data"]
+    assert d["safe"] is False            # 2mm 壁厚 < 所需 5mm
+    adv = design.advice("vessel", d)
+    assert adv is not None
+    assert adv["adjust"]["t_given"] > 0.005    # 建议加厚到 > 所需壁厚
+    assert "许用" in adv["message"]
+
+
+def test_advice_vessel_safe_none():
+    """未校核（无 t_given）时不给建议，只做敏感性。"""
+    d = vessel.solve({"P": 1e6, "D": 1.0, "sigma_allow": 100e6})["data"]
+    assert d["t_given"] is None          # 未校核
+    assert design.advice("vessel", d) is None

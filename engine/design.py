@@ -151,4 +151,24 @@ def advice(scenario: str, data: dict) -> dict | None:
             }
         return None
 
+    if scenario == "vessel":
+        # 校核模式：给定壁厚但实际应力超许用 → 建议加厚
+        if data.get("safe") is False:
+            t_given = data.get("t_given")
+            if t_given:
+                t_req = data["t_req"]
+                need = t_req * 1.25
+                return {
+                    "message": (
+                        f"给定壁厚 {t_given * 1000:.1f} mm 下实际应力 "
+                        f"{data['sigma_actual'] / 1e6:.0f} MPa，超过许用 "
+                        f"{data['sigma_allow'] / 1e6:.0f} MPa。ASME 所需壁厚 "
+                        f"{data['t_req_mm']:.1f} mm —— 建议加厚到 {need * 1000:.1f} mm"
+                        f"（留 25% 裕量）即安全。"
+                    ),
+                    "adjust": {"t_given": float(need)},
+                    "label": f"t → {need * 1000:.1f} mm 并重算",
+                }
+        return None
+
     return None
