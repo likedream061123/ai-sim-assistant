@@ -275,6 +275,7 @@ st.markdown("""
 [data-testid="stRadio"] label:hover {color:#C9D6FF;}
 [data-testid="stRadio"] label:has(input:checked) {background:transparent !important; color:#fff;
   border-bottom:2px solid #3D7BFF !important; box-shadow:none !important;}
+[data-testid="stRadio"] label:has(input:focus-visible) {outline:2px solid #3D7BFF; outline-offset:2px; border-radius:6px;}
 [data-testid="stRadio"] label p {margin:0 !important; font-weight:600;}
 
 .stButton > button {border-radius:10px; font-weight:600; font-size:.92rem; transition:transform .12s ease, box-shadow .15s ease;}
@@ -305,6 +306,7 @@ st.markdown("""
   box-shadow:0 12px 36px rgba(0,5,25,.5);}
 [data-testid="stMetricLabel"] {font-size:.76rem; color:#9FB4FF;}
 [data-testid="stMetricValue"] {font-size:1.55rem; font-weight:800; letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums;
   font-family:'Sora','Segoe UI','Microsoft YaHei',sans-serif; color:#FFFFFF;
   text-shadow:0 2px 18px rgba(61,123,255,.35);}
 
@@ -318,7 +320,8 @@ st.markdown("""
 [data-testid="stColumn"]:nth-child(4) [data-testid="stMetric"] {animation-delay:.41s;}
 
 /* ---- 标题/层级（深色页）---- */
-h1, h2, h3 {color:#fff !important; letter-spacing:-.02em; font-weight:800;}
+h1 {color:#fff !important; letter-spacing:-.02em; font-weight:800; text-wrap:balance;}
+h2, h3 {color:#fff !important; letter-spacing:-.02em; font-weight:800;}
 h2 {font-size:1.15rem; margin-top:1.9rem; font-weight:700;}
 .stCaption {color:#9fb4ff;}
 
