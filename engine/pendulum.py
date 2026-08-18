@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 
 # 默认物理参数（与 MATLAB 版一致）
@@ -145,3 +146,49 @@ if __name__ == "__main__":
     print("---- single pendulum (scipy) checks ----")
     checks = period_checks(th0_deg=120.0)
     print(json.dumps(checks, indent=2))
+
+
+def plot_pendulum(result: dict) -> list:
+    """由 solve_pendulum 结果绘制 4 张图：摆角/角速度/相平面/能量。"""
+    t = result["t"]
+    th = result["th_deg"]
+    w = result["omega"]
+    E = result["energy"]
+    fig1 = plt.figure(figsize=(6, 4))
+    plt.plot(t, th, lw=1.5)
+    plt.xlabel("t (s)"); plt.ylabel("θ (deg)"); plt.title("摆角 - 时间"); plt.grid()
+    fig2 = plt.figure(figsize=(6, 4))
+    plt.plot(t, w, lw=1.5)
+    plt.xlabel("t (s)"); plt.ylabel("ω (rad/s)"); plt.title("角速度 - 时间"); plt.grid()
+    fig3 = plt.figure(figsize=(6, 4))
+    plt.plot(th, w, lw=1.2)
+    plt.xlabel("θ (deg)"); plt.ylabel("ω (rad/s)"); plt.title("相平面"); plt.grid()
+    fig4 = plt.figure(figsize=(6, 4))
+    plt.plot(t, E, lw=1.5)
+    plt.xlabel("t (s)"); plt.ylabel("E (J)"); plt.title("机械能 - 时间"); plt.grid()
+    return [fig1, fig2, fig3, fig4]
+
+
+def solve(params: dict | None = None) -> dict:
+    """统一引擎接口：solve(params) -> {"figures": [...], "data": {...}}。
+
+    物理键（m/l/g/c）交给求解器；控制键（th0_deg/w0/t_end）单独处理。
+    """
+    p = params or {}
+    th0 = p.get("th0_deg", 120.0)
+    w0 = p.get("w0", 0.0)
+    t_end = p.get("t_end", 20.0)
+    phys = {k: v for k, v in p.items() if k in DEFAULT_PARAMS}
+    res = solve_pendulum(th0_deg=th0, w0=w0, t_span=(0.0, t_end), params=phys)
+    figs = plot_pendulum(res)
+    ck = period_checks(th0_deg=th0, params=phys)
+    data = {
+        "T_num": ck["T_num"],
+        "T0_small": ck["T0_small"],
+        "T_ratio": ck["T_ratio"],
+        "E0": ck["E0"],
+        "E_end": ck["E_end"],
+        "th0_deg": th0,
+        "params": res["params"],
+    }
+    return {"figures": figs, "data": data}
