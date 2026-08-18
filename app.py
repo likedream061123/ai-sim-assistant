@@ -313,7 +313,7 @@ st.markdown("""
 /* ---- 完成时刻（orchestrated reveal，唯一编排动效）：图表先淡入，数据卡依次浮起 ---- */
 @keyframes card-rise { from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none} }
 @keyframes chart-fade { from{opacity:0; transform:scale(.99); filter:blur(5px)} to{opacity:1; transform:none; filter:blur(0)} }
-[data-testid="stImage"], .element-container:has(img) {animation:chart-fade .6s cubic-bezier(.16,1,.3,1) .05s both;}
+[data-testid="stImage"], .stImage, .element-container:has(img) {animation:chart-fade .6s cubic-bezier(.16,1,.3,1) .05s both;}
 [data-testid="stMetric"] {animation:card-rise .5s cubic-bezier(.16,1,.3,1) .2s both;}
 [data-testid="stColumn"]:nth-child(2) [data-testid="stMetric"] {animation-delay:.27s;}
 [data-testid="stColumn"]:nth-child(3) [data-testid="stMetric"] {animation-delay:.34s;}
