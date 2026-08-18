@@ -20,8 +20,11 @@ DEFAULT_PARAMS = {
 }
 
 
-def solve_beam(params: dict | None = None) -> dict:
-    """数值求最大挠度/弯矩，返回挠度曲线 + 弯矩图 + 关键数据。"""
+def solve_beam(params: dict | None = None, plot: bool = True) -> dict:
+    """数值求最大挠度/弯矩，返回挠度曲线 + 弯矩图 + 关键数据。
+
+    plot=False 时跳过 matplotlib 画图（供敏感性扫描等批量调用提速）。
+    """
     p = {**DEFAULT_PARAMS, **(params or {})}
     L, P, a, E, I = p["L"], p["P"], p["a"], p["E"], p["I"]
     b = L - a
@@ -51,21 +54,25 @@ def solve_beam(params: dict | None = None) -> dict:
     within_limit = v_max <= v_allow
     R_A, R_B = P * b / L, P * a / L   # 支反力
 
-    fig1 = plt.figure(figsize=(6, 4))
-    plt.plot(xx, vv * 1000, "b-", lw=1.8)
-    plt.plot(x_max, v_max * 1000, "ro", ms=8, mfc="r")
-    plt.xlabel("x (m)"); plt.ylabel("挠度 v(x) (mm, 向下为正)")
-    plt.title(f"钢梁挠度 | 最大 {v_max*1000:.3f} mm @ x={x_max:.3f} m")
-    plt.grid()
+    figs = []
+    if plot:
+        fig1 = plt.figure(figsize=(6, 4))
+        plt.plot(xx, vv * 1000, "b-", lw=1.8)
+        plt.plot(x_max, v_max * 1000, "ro", ms=8, mfc="r")
+        plt.xlabel("x (m)"); plt.ylabel("挠度 v(x) (mm, 向下为正)")
+        plt.title(f"钢梁挠度 | 最大 {v_max*1000:.3f} mm @ x={x_max:.3f} m")
+        plt.grid()
+        figs.append(fig1)
 
-    fig2 = plt.figure(figsize=(6, 4))
-    plt.plot(xx, Mm, "r-", lw=1.8)
-    plt.xlabel("x (m)"); plt.ylabel("弯矩 M(x) (N·m)")
-    plt.title(f"弯矩图 | 最大 |M| = {M_max:.0f} N·m @ x={x_Mmax:.3f} m")
-    plt.grid()
+        fig2 = plt.figure(figsize=(6, 4))
+        plt.plot(xx, Mm, "r-", lw=1.8)
+        plt.xlabel("x (m)"); plt.ylabel("弯矩 M(x) (N·m)")
+        plt.title(f"弯矩图 | 最大 |M| = {M_max:.0f} N·m @ x={x_Mmax:.3f} m")
+        plt.grid()
+        figs.append(fig2)
 
     return {
-        "figures": [fig1, fig2],
+        "figures": figs,
         "data": {
             "v_max": v_max, "x_max": x_max, "v_max_mm": v_max * 1000,
             "M_max": M_max, "x_Mmax": x_Mmax,

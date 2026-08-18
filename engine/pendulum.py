@@ -169,10 +169,11 @@ def plot_pendulum(result: dict) -> list:
     return [fig1, fig2, fig3, fig4]
 
 
-def solve(params: dict | None = None) -> dict:
-    """统一引擎接口：solve(params) -> {"figures": [...], "data": {...}}。
+def solve(params: dict | None = None, plot: bool = True) -> dict:
+    """统一引擎接口：solve(params, plot=True) -> {"figures": [...], "data": {...}}。
 
     物理键（m/l/g/c）交给求解器；控制键（th0_deg/w0/t_end）单独处理。
+    plot=False 时跳过 matplotlib 画图（供敏感性扫描提速）。
     """
     p = params or {}
     th0 = p.get("th0_deg", 120.0)
@@ -180,7 +181,7 @@ def solve(params: dict | None = None) -> dict:
     t_end = p.get("t_end", 20.0)
     phys = {k: v for k, v in p.items() if k in DEFAULT_PARAMS}
     res = solve_pendulum(th0_deg=th0, w0=w0, t_span=(0.0, t_end), params=phys)
-    figs = plot_pendulum(res)
+    figs = plot_pendulum(res) if plot else []
     ck = period_checks(th0_deg=th0, params=phys)
     data = {
         "T_num": ck["T_num"],

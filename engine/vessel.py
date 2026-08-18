@@ -17,8 +17,11 @@ DEFAULT_PARAMS = {
 }
 
 
-def solve_vessel(params: dict | None = None) -> dict:
-    """求所需壁厚 + 可选校核给定壁厚，返回壁厚-压力曲线 + 关键数据。"""
+def solve_vessel(params: dict | None = None, plot: bool = True) -> dict:
+    """求所需壁厚 + 可选校核给定壁厚，返回壁厚-压力曲线 + 关键数据。
+
+    plot=False 时跳过 matplotlib 画图（供敏感性扫描提速）。
+    """
     p = {**DEFAULT_PARAMS, **(params or {})}
     P, D, sigma = p["P"], p["D"], p["sigma_allow"]
     t_req = P * D / (2 * sigma)
@@ -29,15 +32,18 @@ def solve_vessel(params: dict | None = None) -> dict:
     P_arr = np.linspace(0.5 * P, 1.5 * P, 50)
     t_arr = P_arr * D / (2 * sigma)
 
-    fig = plt.figure(figsize=(6, 4))
-    plt.plot(P_arr / 1e6, t_arr * 1000, "b-", lw=1.8)
-    plt.plot(P / 1e6, t_req * 1000, "ro", ms=8, mfc="r")
-    plt.xlabel("内压 P (MPa)"); plt.ylabel("所需壁厚 t (mm)")
-    plt.title(f"薄壁圆筒壁厚 | 当前 P={P/1e6:.2f} MPa → t={t_req*1000:.2f} mm")
-    plt.grid()
+    figs = []
+    if plot:
+        fig = plt.figure(figsize=(6, 4))
+        plt.plot(P_arr / 1e6, t_arr * 1000, "b-", lw=1.8)
+        plt.plot(P / 1e6, t_req * 1000, "ro", ms=8, mfc="r")
+        plt.xlabel("内压 P (MPa)"); plt.ylabel("所需壁厚 t (mm)")
+        plt.title(f"薄壁圆筒壁厚 | 当前 P={P/1e6:.2f} MPa → t={t_req*1000:.2f} mm")
+        plt.grid()
+        figs.append(fig)
 
     return {
-        "figures": [fig],
+        "figures": figs,
         "data": {
             "t_req": float(t_req), "t_req_mm": float(t_req * 1000),
             "P": float(P), "D": float(D), "sigma_allow": float(sigma),

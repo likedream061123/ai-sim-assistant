@@ -23,10 +23,11 @@ DEFAULT_PARAMS = {
 }
 
 
-def solve_heat(params: dict | None = None) -> dict:
+def solve_heat(params: dict | None = None, plot: bool = True) -> dict:
     """显式差分求解钢件冷却，返回中心温度曲线 + 冷却到目标温度的时间。
 
     返回 {"figures": [温度分布快照, 中心温度曲线], "data": {...}}。
+    plot=False 时跳过画图与快照累积（供敏感性扫描提速）。
     """
     p = {**DEFAULT_PARAMS, **(params or {})}
     L, N = p["L"], p["N"]
@@ -43,7 +44,7 @@ def solve_heat(params: dict | None = None) -> dict:
     T_center, t_arr = [], []
     nplot = 6
     plot_interval = max(1, nstep // (nplot - 1))
-    U_snap, t_snap = [u.copy()], [0.0]
+    U_snap, t_snap = ([u.copy()], [0.0]) if plot else (None, None)
 
     for n in range(1, nstep + 1):
         # 左 Neumann 反射（中心对称），右 Dirichlet 固定（表面恒温）
@@ -51,7 +52,7 @@ def solve_heat(params: dict | None = None) -> dict:
         lap = uext[2:] - 2 * uext[1:-1] + uext[:-2]
         u = u + r * lap
         u[-1] = Tw
-        if n % plot_interval == 0:
+        if plot and n % plot_interval == 0:
             U_snap.append(u.copy())
             t_snap.append(n * dt)
         if t_center_target is None and u[0] <= Tt:
@@ -62,20 +63,24 @@ def solve_heat(params: dict | None = None) -> dict:
 
     steady_reached = abs(float(u[-1] - u[0])) < 1e-6   # 全场趋同（壁温）
 
-    fig1 = plt.figure(figsize=(6, 4))
-    for k in range(len(U_snap)):
-        plt.plot(x, U_snap[k], label=f"t={t_snap[k]:.0f}s")
-    plt.xlabel("x (m, 0=中心)"); plt.ylabel("T (°C)")
-    plt.title("钢件冷却：温度分布快照"); plt.legend(); plt.grid()
+    figs = []
+    if plot:
+        fig1 = plt.figure(figsize=(6, 4))
+        for k in range(len(U_snap)):
+            plt.plot(x, U_snap[k], label=f"t={t_snap[k]:.0f}s")
+        plt.xlabel("x (m, 0=中心)"); plt.ylabel("T (°C)")
+        plt.title("钢件冷却：温度分布快照"); plt.legend(); plt.grid()
+        figs.append(fig1)
 
-    fig2 = plt.figure(figsize=(6, 4))
-    plt.plot(t_arr, T_center, "b-", lw=1.8)
-    plt.axhline(Tt, color="r", ls="--", lw=1, label=f"T_target={Tt:.0f}°C")
-    plt.xlabel("t (s)"); plt.ylabel("中心温度 (°C)")
-    plt.title("钢件中心冷却曲线"); plt.legend(); plt.grid()
+        fig2 = plt.figure(figsize=(6, 4))
+        plt.plot(t_arr, T_center, "b-", lw=1.8)
+        plt.axhline(Tt, color="r", ls="--", lw=1, label=f"T_target={Tt:.0f}°C")
+        plt.xlabel("t (s)"); plt.ylabel("中心温度 (°C)")
+        plt.title("钢件中心冷却曲线"); plt.legend(); plt.grid()
+        figs.append(fig2)
 
     return {
-        "figures": [fig1, fig2],
+        "figures": figs,
         "data": {
             "t_center_target": t_center_target,
             "T_center": np.array(T_center),

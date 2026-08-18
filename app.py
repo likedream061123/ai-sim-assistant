@@ -31,7 +31,7 @@ matplotlib.rcParams.update({
     "axes.prop_cycle": matplotlib.cycler(color=["#2F5BFF", "#E07B3A", "#2A9D8F", "#7A6FE0"]),
 })
 import streamlit as st
-import engine.pendulum, engine.heat, engine.beam, engine.vessel
+import engine.pendulum, engine.heat, engine.beam, engine.vessel, engine.design as design
 from agent import llm
 
 # ---- 背景极光（ReactBits Aurora · 原生 WebGL 移植，蓝色系）----
@@ -491,7 +491,7 @@ def _show_sources(scenario: str, given: dict):
         st.dataframe(rows, hide_index=True)
 
 
-def render_result(scenario: str, params: dict, note: str = ""):
+def render_result(scenario: str, params: dict, note: str = "", can_apply: bool = False):
     if note:
         st.info(note)
     try:
@@ -508,6 +508,35 @@ def render_result(scenario: str, params: dict, note: str = ""):
         st.pyplot(fig)
     st.subheader("关键数据")
     render_metrics(scenario, res["data"])
+
+    # ---- 设计辅助 · 参数敏感性（改变谁对结果影响最大）----
+    with st.expander("设计辅助 · 参数敏感性", expanded=True):
+        full = {**ENGINE_DEFAULTS[scenario], **params}
+        with st.spinner("扫描各参数敏感性…"):
+            rows = design.sensitivity(ENGINES[scenario].solve, scenario, full)
+        if rows:
+            fig = design.plot_sensitivity(rows, scenario)
+            _darkfig(fig)
+            st.pyplot(fig)
+            top = rows[0]
+            verb = "增大" if top[1] > 0 else "减小"
+            label = design.SENSITIVITY_SPEC[scenario]["label"]
+            st.caption(
+                f"💡 对「{label}」影响最大的是 **{top[0]}**：它 {verb} 10%，结果变化约 "
+                f"**{abs(top[1]):.0f}%** —— 想调结果，先动它最有效。")
+        else:
+            st.caption("（当前参数下无法完成敏感性扫描）")
+
+    # ---- 设计辅助 · 超限自动建议（一键应用）----
+    adv = design.advice(scenario, res["data"])
+    if adv:
+        st.warning(adv["message"])
+        if can_apply and adv.get("adjust"):
+            if st.button(f"⚡ 一键应用：{adv['label']}",
+                         key=f"apply_{scenario}", type="primary", use_container_width=True):
+                st.session_state["advice_apply"] = adv["adjust"]
+                st.rerun()
+
     _show_sources(scenario, params)
     try:
         simple = {k: v for k, v in res["data"].items()
@@ -614,5 +643,12 @@ else:
         params["D"] = c2.number_input("内径 (m)", 0.1, 10.0, 1.0)
         params["sigma_allow"] = c3.number_input("许用应力 (Pa)", 1e7, 1e9, 100e6, format="%.3g")
     _calc = st.columns([5, 1, 2])
-    if _calc[2].button("计算", type="primary", use_container_width=True):
-        render_result(scenario, params)
+    # 「一键应用建议」：advice 按钮把调整参数存入 session_state 并 rerun，这里消费后自动重算
+    applied = st.session_state.pop("advice_apply", None)
+    if applied:
+        params.update(applied)
+        st.success("已应用设计建议：" + "，".join(f"{k} = {v:.3g}" for k, v in applied.items())
+                   + "，结果已重算（可在上方输入框继续微调）。")
+        render_result(scenario, params, can_apply=True)
+    elif _calc[2].button("计算", type="primary", use_container_width=True):
+        render_result(scenario, params, can_apply=True)
