@@ -91,6 +91,15 @@ else:
         c4, c5 = st.columns(2)
         params["E"] = c4.number_input("弹性模量 E (Pa)", 1e9, 1e12, 200e9, format="%.3g")
         params["I"] = c5.number_input("惯性矩 I (m4)", 1e-8, 1.0, 5e-4, format="%.3g")
+        if st.button("🔍 SerpApi 查钢梁典型参数"):
+            try:
+                from agent import serpapi
+                info = serpapi.search("standard steel I-beam elastic modulus moment of inertia")
+                st.write("查到：", info[:2])
+                params.setdefault("E", 200e9)
+                params.setdefault("I", 5e-4)
+            except Exception as e:
+                st.error(f"SerpApi 查询失败：{e}")
     elif scenario == "vessel":
         c1, c2, c3 = st.columns(3)
         params["P"] = c1.number_input("内压 (Pa)", 1e4, 1e8, 1e6, format="%.3g")
