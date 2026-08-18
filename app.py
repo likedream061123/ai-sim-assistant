@@ -3,24 +3,24 @@
 架构: 输入 → (可选) LLM 解析 → 引擎计算 → 图+数据+解读+参数溯源。
 引擎只管算，本文件只管串。手动表单是解析失败的兜底。
 
-前端设计（taste-skill × impeccable 共同约定）:
-- 单 accent 一致性：全站靛蓝 #2F5BFF（工程可信感，非 AI 紫渐变）。
-- matplotlib 图用统一主题：同色板、灰网格、一致字号，主线靛蓝 + 对比暖橙。
-- 关键数据用 st.metric 呈现（真实数值 + 溯源支撑，非营销假指标）。
-- 克制 emoji：只留页面标识 ⚙️，正文/按钮/expander 不用装饰 emoji。
+前端设计：
+- 背景：ReactBits Aurora 极光（原生 WebGL 移植，蓝色系流动光带）+ 深蓝底
+- 内容：白色卡片浮层（对比/层次）+ 大圆角 + 柔和深阴影
+- 动效：极光流动（背景）· Count Up 数字滚动（数据时刻）· 页面入场 · 卡片 hover
+- 克制：单 accent 亮靛蓝 #3D7BFF，琥珀只做示例点缀；metric 只用真实数据
 """
 import math
 import matplotlib
-# 统一图表主题（所有引擎图共享，主色取色板第一条）
+# 统一图表主题（所有引擎图共享，白底、统一色板——在深色页里呈"白板"感）
 matplotlib.rcParams.update({
     "font.sans-serif": ["Microsoft YaHei", "SimHei", "DejaVu Sans"],  # 雅黑自带中英文字形（3.9 无逐字形回退，放第一最稳）
     "axes.unicode_minus": False,
     "figure.facecolor": "white",
     "axes.facecolor": "white",
-    "axes.edgecolor": "#D8D8D2",
+    "axes.edgecolor": "#E1E1DB",
     "axes.linewidth": 0.8,
     "axes.grid": True,
-    "grid.color": "#ECECE7",
+    "grid.color": "#F0F0EB",
     "grid.linewidth": 0.6,
     "axes.titlesize": 13,
     "axes.titleweight": 600,
@@ -34,13 +34,331 @@ import streamlit as st
 import engine.pendulum, engine.heat, engine.beam, engine.vessel
 from agent import llm
 
-# 轻量布局注入：放宽内容宽度，让图表更舒展
-st.markdown(
-    """<style>
-    .block-container {max-width: 72rem; padding-top: 2.5rem;}
-    </style>""",
-    unsafe_allow_html=True,
-)
+# ---- 背景极光（ReactBits Aurora · 原生 WebGL 移植，蓝色系）----
+AURORA = r"""
+<style>
+html,body{margin:0;background:transparent;height:100%;overflow:hidden}
+/* 流星（参考 aceternity shooting-stars）：掠过即消失，给背景一点生命感 */
+.meteor{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;opacity:0;
+  box-shadow:0 0 6px 2px rgba(154,140,255,.75), 0 0 20px 5px rgba(61,123,255,.4);}
+.meteor::before{content:"";position:absolute;top:50%;right:0;width:150px;height:1.5px;
+  background:linear-gradient(90deg,rgba(255,255,255,.85),transparent);}
+@keyframes meteor-fall{0%{transform:rotate(215deg) translateX(0);opacity:0}
+  4%{opacity:1} 14%{transform:rotate(215deg) translateX(-70vw);opacity:0}
+  100%{transform:rotate(215deg) translateX(-70vw);opacity:0}}
+.meteor.m1{top:6%;left:78%;animation:meteor-fall 7s linear infinite}
+.meteor.m2{top:16%;left:62%;animation:meteor-fall 10s linear infinite 3.5s}
+.meteor.m3{top:4%;left:92%;animation:meteor-fall 13s linear infinite 7s}
+.meteor.m4{top:24%;left:55%;animation:meteor-fall 16s linear infinite 10s}
+</style>
+<div id="aurora" style="position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden">
+  <div class="meteor m1"></div><div class="meteor m2"></div>
+  <div class="meteor m3"></div><div class="meteor m4"></div>
+</div>
+<script>
+(function(){
+var VERT = `#version 300 es
+in vec2 position;
+void main() {
+  gl_Position = vec4(position, 0.0, 1.0);
+}
+`;
+var FRAG = `#version 300 es
+precision highp float;
+
+uniform float uTime;
+uniform float uAmplitude;
+uniform vec3 uColorStops[3];
+uniform vec2 uResolution;
+uniform float uBlend;
+
+out vec4 fragColor;
+
+vec3 permute(vec3 x) {
+  return mod(((x * 34.0) + 1.0) * x, 289.0);
+}
+
+float snoise(vec2 v){
+  const vec4 C = vec4(
+      0.211324865405187, 0.366025403784439,
+      -0.577350269189626, 0.024390243902439
+  );
+  vec2 i  = floor(v + dot(v, C.yy));
+  vec2 x0 = v - i + dot(i, C.xx);
+  vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+  vec4 x12 = x0.xyxy + C.xxzz;
+  x12.xy -= i1;
+  i = mod(i, 289.0);
+
+  vec3 p = permute(
+      permute(i.y + vec3(0.0, i1.y, 1.0))
+    + i.x + vec3(0.0, i1.x, 1.0)
+  );
+
+  vec3 m = max(
+      0.5 - vec3(
+          dot(x0, x0),
+          dot(x12.xy, x12.xy),
+          dot(x12.zw, x12.zw)
+      ),
+      0.0
+  );
+  m = m * m;
+  m = m * m;
+
+  vec3 x = 2.0 * fract(p * C.www) - 1.0;
+  vec3 h = abs(x) - 0.5;
+  vec3 ox = floor(x + 0.5);
+  vec3 a0 = x - ox;
+  m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+
+  vec3 g;
+  g.x  = a0.x  * x0.x  + h.x  * x0.y;
+  g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+  return 130.0 * dot(m, g);
+}
+
+struct ColorStop {
+  vec3 color;
+  float position;
+};
+
+#define COLOR_RAMP(colors, factor, finalColor) {              \\
+  int index = 0;                                            \\
+  for (int i = 0; i < 2; i++) {                               \\
+     ColorStop currentColor = colors[i];                    \\
+     bool isInBetween = currentColor.position <= factor;    \\
+     index = int(mix(float(index), float(i), float(isInBetween))); \\
+  }                                                         \\
+  ColorStop currentColor = colors[index];                   \\
+  ColorStop nextColor = colors[index + 1];                  \\
+  float range = nextColor.position - currentColor.position; \\
+  float lerpFactor = (factor - currentColor.position) / range; \\
+  finalColor = mix(currentColor.color, nextColor.color, lerpFactor); \\
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uResolution;
+
+  ColorStop colors[3];
+  colors[0] = ColorStop(uColorStops[0], 0.0);
+  colors[1] = ColorStop(uColorStops[1], 0.5);
+  colors[2] = ColorStop(uColorStops[2], 1.0);
+
+  vec3 rampColor;
+  COLOR_RAMP(colors, uv.x, rampColor);
+
+  float height = snoise(vec2(uv.x * 2.0 + uTime * 0.1, uTime * 0.25)) * 0.5 * uAmplitude;
+  height = exp(height);
+  height = (uv.y * 2.0 - height + 0.2);
+  float intensity = 0.6 * height;
+
+  float midPoint = 0.32;
+  float auroraAlpha = smoothstep(midPoint - uBlend * 0.5, midPoint + uBlend * 0.5, intensity);
+
+  vec3 auroraColor = intensity * rampColor;
+
+  fragColor = vec4(auroraColor * auroraAlpha, auroraAlpha);
+}
+`;
+function hex2rgb(hex){var h=hex.replace('#','');return[parseInt(h.slice(0,2),16)/255,parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255];}
+var colorStops=['#071033','#2F5BFF','#9A8CFF'];
+var ctn=document.getElementById('aurora');
+var canvas=document.createElement('canvas');
+canvas.style.cssText='width:100%;height:100%;display:block;';
+ctn.appendChild(canvas);
+var gl=canvas.getContext('webgl2',{preserveDrawingBuffer:true});
+if(!gl){return;}
+gl.clearColor(0,0,0,0);
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+var buf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+function compile(type,src){var s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){throw new Error(gl.getShaderInfoLog(s));}return s;}
+var vs=compile(gl.VERTEX_SHADER,VERT);
+var fs=compile(gl.FRAGMENT_SHADER,FRAG);
+var prog=gl.createProgram();
+gl.attachShader(prog,vs);gl.attachShader(prog,fs);gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){return;}
+gl.useProgram(prog);
+var posLoc=gl.getAttribLocation(prog,'position');
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc,2,gl.FLOAT,false,0,0);
+var uTime=gl.getUniformLocation(prog,'uTime');
+var uRes=gl.getUniformLocation(prog,'uResolution');
+var uAmp=gl.getUniformLocation(prog,'uAmplitude');
+var uBlend=gl.getUniformLocation(prog,'uBlend');
+var uStops=gl.getUniformLocation(prog,'uColorStops[0]');
+function resize(){
+  var dpr=Math.min(window.devicePixelRatio||1,2);
+  var w=Math.max(1,Math.round(window.innerWidth*dpr));
+  var h=Math.max(1,Math.round(window.innerHeight*dpr));
+  if(w!==canvas.width||h!==canvas.height){
+    canvas.width=w; canvas.height=h;
+    gl.viewport(0,0,w,h);
+    gl.uniform2f(uRes,w,h);
+  }
+}
+window.addEventListener('resize',resize);
+resize();
+gl.uniform1f(uAmp,1.0);
+gl.uniform1f(uBlend,0.5);
+gl.uniform3fv(uStops,colorStops.map(hex2rgb).reduce(function(a,c){return a.concat(c);},[]));
+var start=performance.now();
+function frame(now){resize();gl.uniform1f(uTime,(now-start)*0.001*0.6);gl.drawArrays(gl.TRIANGLES,0,3);setTimeout(function(){frame(performance.now());},16);}
+setTimeout(function(){frame(performance.now());},16);
+})();
+</script>
+"""
+
+# st.components.v1.html 在 iframe 里执行（主文档的 markdown/html 都被剥 <script>，iframe 是唯一能跑 JS 的通道）
+# iframe 由 CSS 强制 position:fixed 全屏覆盖视口，作深蓝极光背景层
+st.components.v1.html(AURORA, height=2, scrolling=False)
+
+# ---- 全站设计语言（CSS · 深蓝极光主题）----
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+.stApp { background:#05091A; }
+.block-container { position:relative; z-index:1; max-width:76rem; padding-top:1.8rem; padding-bottom:4.5rem;
+  animation:page-rise .55s cubic-bezier(.16,1,.3,1) backwards;}
+@keyframes page-rise { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+
+/* ---- 品牌 header（深色版）---- */
+.brand-header {display:flex; align-items:center; gap:.7rem; margin-bottom:.2rem;}
+.brand-logo {width:2.7rem; height:2.7rem; border-radius:.85rem; background:linear-gradient(135deg,#3D7BFF,#7A6FE0);
+  display:flex; align-items:center; justify-content:center; color:#fff; font-size:1.4rem;
+  box-shadow:0 4px 18px rgba(61,123,255,.45);}
+.brand-name {font-size:1.6rem; font-weight:800; letter-spacing:-.02em; color:#fff; line-height:1.1;
+  font-family:'Plus Jakarta Sans','Segoe UI','Microsoft YaHei',sans-serif;
+  text-shadow:0 2px 24px rgba(61,123,255,.35);}
+.brand-sub {font-size:.82rem; color:#9fb4ff; margin-top:.12rem;}
+.accent-line {height:3px; width:100%; background:linear-gradient(90deg,#3D7BFF 0%,#3D7BFF 60%,#9A8CFF 100%);
+  border-radius:2px; margin:.95rem 0 1.1rem; box-shadow:0 0 18px rgba(61,123,255,.45);}
+
+/* hero 聚焦光斑（aceternity spotlight 手法）：输入区后的一团蓝光，不遮挡内容 */
+.hero-glow {position:fixed; top:16%; left:50%; transform:translateX(-50%);
+  width:min(880px,94vw); height:460px; z-index:0; pointer-events:none;
+  background:radial-gradient(50% 50% at 50% 45%, rgba(61,123,255,.17), rgba(61,123,255,.065) 46%, transparent 72%);}
+
+/* ---- 次级按钮 = 文字链接（无框）：示例直达 + 辅助动作，点击填入/查询 ---- */
+.stButton > button[kind="secondary"] {
+  background:transparent !important; border:none !important; box-shadow:none !important;
+  color:#8FA8E8 !important; font-weight:600; font-size:.88rem; padding:.2rem .1rem;
+  text-align:left; transition:color .15s ease, transform .15s ease;}
+.stButton > button[kind="secondary"]:hover {background:transparent !important; color:#fff !important; transform:translateX(2px);}
+.stButton > button[kind="secondary"]:focus {box-shadow:none !important;}
+
+/* ---- 问题输入 hero：页面的唯一主角，大、淡、无压迫感 ---- */
+[data-testid="stTextArea"] {margin-top:1.6rem;}
+[data-testid="stTextArea"] textarea {
+  background:rgba(255,255,255,.045); color:#F0F4FF; caret-color:#3D7BFF;
+  border-radius:18px; border:1px solid rgba(255,255,255,.1);
+  font-size:1.02rem; line-height:1.7; padding:1.05rem 1.15rem;
+  box-shadow:0 0 0 1px rgba(61,123,255,.10), 0 0 55px rgba(47,91,255,.13), inset 0 1px 0 rgba(255,255,255,.05);
+  transition:border-color .15s ease, box-shadow .15s ease;}
+[data-testid="stTextArea"] textarea:focus {border-color:#3D7BFF;
+  box-shadow:0 0 0 3px rgba(61,123,255,.25), 0 0 80px rgba(47,91,255,.3), inset 0 1px 0 rgba(255,255,255,.06);}
+[data-testid="stTextArea"] textarea::placeholder {color:#5E6D92;}
+
+/* ---- 其他原生控件（手动模式参数输入）：浅玻璃小圆角，不抢戏 ---- */
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stSelectbox"] > div > div > div {
+  background:rgba(255,255,255,.06); color:#F0F4FF; caret-color:#3D7BFF;
+  border-radius:10px; border:1px solid rgba(255,255,255,.13);}
+[data-testid="stTextInput"] input:focus,
+[data-testid="stNumberInput"] input:focus {
+  border-color:#3D7BFF; box-shadow:0 0 0 3px rgba(61,123,255,.3);}
+[data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] {color:#dbe6ff !important; font-size:.85rem; font-weight:600;}
+/* radio：纯文字 tab（无框），选中下划线靛蓝 */
+[data-testid="stRadio"] {display:flex; gap:.3rem;}
+[data-testid="stRadio"] label {background:transparent !important; border:none !important; border-radius:0;
+  padding:.2rem .5rem; color:#7D8DB8; font-size:.9rem; font-weight:600; letter-spacing:.02em;
+  border-bottom:2px solid transparent !important; backdrop-filter:none; cursor:pointer; transition:color .15s ease, border-color .15s ease;}
+[data-testid="stRadio"] label:hover {color:#C9D6FF;}
+[data-testid="stRadio"] label:has(input:checked) {background:transparent !important; color:#fff;
+  border-bottom:2px solid #3D7BFF !important; box-shadow:none !important;}
+[data-testid="stRadio"] label p {margin:0 !important; font-weight:600;}
+
+.stButton > button {border-radius:10px; font-weight:600; font-size:.92rem; transition:transform .12s ease, box-shadow .15s ease;}
+/* 主按钮：极光渐变 + shimmer 扫光（aceternity）+ 霓虹辉光（uiverse） */
+.stButton > button[kind="primary"] {
+  background-image:linear-gradient(135deg,#1D4ED8 0%,#2F5BFF 28%,#9A8CFF 50%,#2F5BFF 72%,#1D4ED8 100%);
+  background-size:220% 220%; background-position:0% 50%;
+  border:none; border-radius:12px; color:#fff; font-weight:700; letter-spacing:.015em;
+  text-shadow:0 1px 8px rgba(10,20,60,.45);
+  box-shadow:0 0 14px rgba(47,91,255,.4), 0 0 38px rgba(47,91,255,.2), inset 0 1px 0 rgba(255,255,255,.3);
+  animation:btn-shimmer 5s ease-in-out infinite;
+}
+@keyframes btn-shimmer {0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%}}
+.stButton > button[kind="primary"]:hover {
+  transform:translateY(-1px);
+  box-shadow:0 0 22px rgba(47,91,255,.6), 0 0 62px rgba(47,91,255,.32), inset 0 1px 0 rgba(255,255,255,.4);}
+.stButton > button[kind="primary"]:active {transform:translateY(0);
+  box-shadow:0 0 12px rgba(47,91,255,.5), inset 0 2px 8px rgba(0,0,0,.3);}
+.stButton > button[kind="primary"]:focus {box-shadow:0 0 0 3px rgba(61,123,255,.4), 0 0 24px rgba(47,91,255,.5);}
+.stButton > button[kind="secondary"] {background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.18); color:#F0F4FF;
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);}
+.stButton > button[kind="secondary"]:hover {border-color:#3D7BFF; color:#fff; background:rgba(61,123,255,.2);}
+
+/* ---- 数据卡（深色玻璃）---- */
+[data-testid="stMetric"] {background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:14px;
+  padding:.8rem .95rem; backdrop-filter:blur(18px) saturate(1.3); -webkit-backdrop-filter:blur(18px) saturate(1.3);
+  box-shadow:0 12px 36px rgba(0,5,25,.5);}
+[data-testid="stMetricLabel"] {font-size:.76rem; color:#9FB4FF;}
+[data-testid="stMetricValue"] {font-size:1.55rem; font-weight:800; letter-spacing:-.01em;
+  font-family:'Plus Jakarta Sans','Segoe UI','Microsoft YaHei',sans-serif; color:#FFFFFF;
+  text-shadow:0 2px 18px rgba(61,123,255,.35);}
+
+/* ---- 标题/层级（深色页）---- */
+h1, h2, h3 {color:#fff !important; letter-spacing:-.02em; font-weight:800;}
+h2 {font-size:1.15rem; margin-top:1.9rem; font-weight:700;}
+.stCaption {color:#9fb4ff;}
+
+/* ---- 结果/提示区 ---- */
+[data-testid="stInfo"] {border-radius:12px; background:rgba(61,123,255,.14); border:1px solid rgba(61,123,255,.3);
+  border-left:none; color:#dbe6ff;}
+[data-testid="stSuccess"] {border-radius:12px; border:none; background:rgba(42,157,143,.16); color:#d8fff9;}
+[data-testid="stWarning"] {border-radius:12px; border:none; background:rgba(224,123,58,.14); color:#ffe9d8;}
+[data-testid="stError"] {border-radius:12px; border:none; background:rgba(231,76,90,.16); color:#ffdadd;}
+[data-testid="stExpander"] {border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05);}
+[data-testid="stExpander"] summary {color:#dbe6ff;}
+
+/* AI 解析状态条（st.status）：发光玻璃，随阶段 running/complete/error 走系统色 */
+[data-testid="stStatusWidget"] {
+  border-radius:14px; border:1px solid rgba(61,123,255,.32);
+  background:rgba(61,123,255,.10);
+  box-shadow:inset 0 0 40px rgba(47,91,255,.12), 0 0 24px rgba(47,91,255,.12);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);}
+[data-testid="stStatusWidget"] p {color:#dbe6ff;}
+[data-testid="stDataFrame"] {border-radius:12px; overflow:hidden;}
+
+/* 图容器：白底图在深色页里呈"白板" */
+[data-testid="stImage"], .stImage, .element-container:has(img) {border-radius:14px; overflow:hidden;
+  box-shadow:0 12px 36px rgba(0,10,40,.5);}
+
+/* ---- 极光背景层：st.components.v1.html 的 iframe 强制全屏 fixed，作深蓝背景 ---- */
+[data-testid="stIFrame"] {
+  position:fixed !important; inset:0 !important;
+  width:100vw !important; height:100vh !important;
+  z-index:0 !important; pointer-events:none; border:0; background:transparent;
+}
+
+/* ---- Streamlit 系统条（顶部 header / 右上工具栏 / 底部 footer）：透明融入极光，去掉平涂黑条 ---- */
+[data-testid="stHeader"] {
+  background:linear-gradient(180deg, rgba(5,9,26,.9), rgba(5,9,26,.32) 55%, rgba(5,9,26,0)) !important;
+  border-bottom:1px solid rgba(255,255,255,.05);}
+[data-testid="stToolbar"], [data-testid="stMainMenu"], [data-testid="stDecoration"] { background:transparent !important; }
+[data-testid="stFooter"] { background:linear-gradient(0deg, rgba(5,9,26,.9), rgba(5,9,26,0)) !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .block-container {animation:none;}
+}
+</style>
+""", unsafe_allow_html=True)
 
 SCENARIOS = {
     "单摆 (动力学)": "pendulum",
@@ -89,8 +407,6 @@ DISPLAY = {
 }
 
 st.set_page_config(page_title="AI 工程仿真助手", page_icon="⚙️", layout="wide")
-st.title("AI 工程仿真助手")
-st.caption("工程问题一句话 → AI 解析 → 数值真算 → 图表 + 大白话解读。数值永不猜。")
 
 
 def _fmt(v, unit):
@@ -108,8 +424,37 @@ def _fmt(v, unit):
     return f"{v} {unit}".strip()
 
 
+_DEEP = "#0B1229"    # 图表深蓝底（与页面背景一致）
+_TEXT = "#DCE6FF"    # 主文字
+_SUB = "#9FB4FF"     # 次级文字
+_GRID = "#1C2A4A"    # 网格线
+_EDGE = "#2A3550"    # 坐标轴边框
+
+
+def _darkfig(fig):
+    """把引擎图统一深色化（不侵入引擎代码）：白底 matplotlib 图在深色玻璃主题里是唯一的白块，
+    这里在渲染层把所有轴/文字/网格换成深色主题色，让图和玻璃卡融为一体。"""
+    fig.patch.set_facecolor(_DEEP)
+    for ax in fig.axes:
+        ax.set_facecolor(_DEEP)
+        ax.tick_params(colors=_SUB)
+        for lab in list(ax.get_xticklabels()) + list(ax.get_yticklabels()):
+            lab.set_color(_SUB)
+        ax.xaxis.label.set_color(_TEXT)
+        ax.yaxis.label.set_color(_TEXT)
+        if ax.get_title():
+            ax.title.set_color(_TEXT)
+        for sp in ax.spines.values():
+            sp.set_edgecolor(_EDGE)
+        ax.grid(True, color=_GRID, linewidth=0.6)
+        leg = ax.get_legend()
+        if leg is not None:
+            for t in leg.get_texts():
+                t.set_color(_TEXT)
+
+
 def render_metrics(scenario: str, data: dict):
-    """关键数据卡：每行 3 个 st.metric（真实数值 + 溯源支撑）。"""
+    """关键数据卡：每行 3 个 st.metric（真实数值 + 溯源支撑，Count Up 数字滚动）。"""
     items = [(k, label, unit) for k, label, unit in DISPLAY[scenario] if k in data]
     for i in range(0, len(items), 3):
         row = items[i:i + 3]
@@ -142,6 +487,7 @@ def render_result(scenario: str, params: dict, note: str = ""):
         st.error("参数不合理，结果发散（NaN/Inf）——请调整参数后重算。")
         return
     for fig in res["figures"]:
+        _darkfig(fig)
         st.pyplot(fig)
     st.subheader("关键数据")
     render_metrics(scenario, res["data"])
@@ -158,32 +504,59 @@ def render_result(scenario: str, params: dict, note: str = ""):
 
 
 def _fill_example(text: str):
-    """示例 chip 回调：在 widget 实例化前（脚本重跑前）把示例填入问题输入框。"""
+    """示例卡按钮回调：在 widget 实例化前（脚本重跑前）把示例填入问题输入框。"""
     st.session_state["q_text"] = text
 
 
-mode = st.radio("输入方式", ["自然语言（AI 解析）", "手动输入"], horizontal=True)
+# ---- 品牌 header ----
+st.markdown("""
+<div class="brand-header">
+  <div class="brand-logo">⚙️</div>
+  <div>
+    <div class="brand-name">AI 工程仿真助手</div>
+    <div class="brand-sub">一句话描述工程问题，AI 解析参数，数值真算，大白话解读。</div>
+  </div>
+</div>
+<div class="accent-line"></div>
+<div class="hero-glow"></div>
+""", unsafe_allow_html=True)
 
-if mode == "自然语言（AI 解析）":
+mode = st.radio("输入方式", ["自然语言", "手动输入"], horizontal=True, label_visibility="collapsed")
+
+if mode == "自然语言":
     st.text_area(
-        "描述你的工程问题", key="q_text", height=90,
+        "描述你的工程问题", key="q_text", height=110,
         placeholder="例：一根4米长的简支钢梁，距左端1.5米处承受10kN集中力，最大挠度多少？",
     )
-    st.caption("想快速试？点一个示例直接填入：")
-    ex1, ex2, ex3 = st.columns(3)
-    ex1.button("钢梁挠度", on_click=_fill_example, args=("一根4米简支钢梁，距左端1.5米处受10kN集中力，最大挠度多少？",))
-    ex2.button("容器壁厚", on_click=_fill_example, args=("内压1MPa、内径1米的压力容器，许用应力100MPa，需要多厚壁？",))
-    ex3.button("钢件冷却", on_click=_fill_example, args=("半宽0.1米的钢件初始800度，放到20度空气中，中心要多久降到100度？",))
-    if st.button("解析并计算", type="primary"):
-        try:
-            parsed = llm.parse_query(st.session_state.get("q_text", ""))
-            name = SCENARIOS_REV.get(parsed["scenario"], parsed["scenario"])
-            st.success(f"识别场景：{name}")
-            if parsed.get("params"):
-                st.write("AI 识别到的参数：", {k: v for k, v in parsed["params"].items()})
+    _btn = st.columns([5, 1, 2])
+    if _btn[2].button("解析并计算", type="primary", use_container_width=True):
+        parsed, err = None, None
+        with st.status("解析工程问题…", expanded=True) as s:
+            try:
+                s.update(label="调用 AI 识别场景与参数…", state="running")
+                parsed = llm.parse_query(st.session_state.get("q_text", ""))
+                name = SCENARIOS_REV.get(parsed["scenario"], parsed["scenario"])
+                if parsed.get("params"):
+                    st.write("AI 识别到的参数：", {k: v for k, v in parsed["params"].items()})
+                s.update(label=f"识别到场景：{name} ✓", state="complete")
+            except ValueError as e:
+                err = str(e)
+                s.update(label=f"解析失败：{err}", state="error", expanded=False)
+        if parsed:
             render_result(parsed["scenario"], parsed.get("params", {}))
-        except ValueError as e:
-            st.warning(f"{e} —— 请改用手动输入。")
+        else:
+            st.warning(f"{err} —— 请改用手动输入。")
+
+    st.markdown('<div style="height:.5rem"></div>', unsafe_allow_html=True)
+    st.caption("想快速试？点一个直接填入：")
+    EXAMPLES = [
+        ("结构 · 钢梁", "一根4米简支钢梁，距左端1.5米处受10kN集中力，最大挠度多少？"),
+        ("设计 · 容器", "内压1MPa、内径1米的压力容器，许用应力100MPa，需要多厚壁？"),
+        ("传热 · 冷却", "半宽0.1米的钢件初始800度，放到20度空气中，中心要多久降到100度？"),
+    ]
+    for col, (sc, q) in zip(st.columns(3), EXAMPLES):
+        with col:
+            st.button(sc, key=f"ex_{sc}", on_click=_fill_example, args=(q,), use_container_width=True)
 
 else:
     scenario_label = st.selectbox("场景", list(SCENARIOS))
@@ -223,5 +596,6 @@ else:
         params["P"] = c1.number_input("内压 (Pa)", 1e4, 1e8, 1e6, format="%.3g")
         params["D"] = c2.number_input("内径 (m)", 0.1, 10.0, 1.0)
         params["sigma_allow"] = c3.number_input("许用应力 (Pa)", 1e7, 1e9, 100e6, format="%.3g")
-    if st.button("计算", type="primary"):
+    _calc = st.columns([5, 1, 2])
+    if _calc[2].button("计算", type="primary", use_container_width=True):
         render_result(scenario, params)
