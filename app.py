@@ -1,4 +1,7 @@
 """AI 工程仿真助手 —— Streamlit 主入口（编排层）。"""
+import matplotlib
+matplotlib.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]  # 雅黑自带中英文字形（3.9 无逐字形回退，放第一最稳）
+matplotlib.rcParams["axes.unicode_minus"] = False
 import streamlit as st
 import engine.pendulum
 
