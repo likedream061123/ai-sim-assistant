@@ -394,7 +394,8 @@ ENGINES = {
     "vessel": engine.vessel,
 }
 ENGINE_DEFAULTS = {
-    "pendulum": engine.pendulum.DEFAULT_PARAMS,
+    # pendulum 物理参数 + 控制参数（th0_deg=0 摆不起来 → T_num 为 None，手动模式首开会白屏）
+    "pendulum": {**engine.pendulum.DEFAULT_PARAMS, "th0_deg": 120.0, "w0": 0.0, "t_end": 20.0},
     "heat": engine.heat.DEFAULT_PARAMS,
     "beam": engine.beam.DEFAULT_PARAMS,
     "vessel": engine.vessel.DEFAULT_PARAMS,
@@ -488,6 +489,56 @@ def _plot_section(figs: list) -> None:
         buf = io.BytesIO()
         fig.savefig(buf, format="png", dpi=110, bbox_inches="tight")
         st.image(buf.getvalue(), width=w)
+
+
+@st.fragment
+def _compare_section(scenario: str, params: dict) -> None:
+    """参数对比（fragment 隔离）：改一个参数，看目标输出怎么变。
+
+    扫描复用 design.compare（SENSITIVITY_SPEC 白名单 + 目标键），曲线 + 当前值红点。
+    fragment 内换参数/调范围/改采样只 rerun 本区，不重算主流程、不重复调用 AI。
+    """
+    labels = design.PARAM_LABELS.get(scenario, {})
+    opts = [p for p in design.SENSITIVITY_SPEC[scenario]["params"] if p in labels]
+    if not opts:
+        return
+    st.markdown("---")
+    st.subheader("📈 参数对比")
+    st.caption("改一个参数，看结果怎么变 —— 帮你理解每个参数的『手感』。")
+    c1, c2, c3 = st.columns([2, 2, 1])
+    pname = c1.selectbox("对比参数", opts, format_func=lambda p: labels[p], key="cmp_param")
+    cur = params.get(pname)
+    if cur is None:
+        cur = ENGINE_DEFAULTS[scenario].get(pname)
+    if cur is None:
+        st.warning("该参数当前没有值，先在表单里设一个。")
+        return
+    cur = float(cur)
+    lo = c2.number_input("范围下限", value=cur * 0.5 if cur > 0 else cur * 0.1,
+                         key=f"cmp_lo_{pname}", format="%.3g")
+    hi = c3.number_input("范围上限", value=cur * 1.5,
+                         key=f"cmp_hi_{pname}", format="%.3g")
+    n = st.slider("采样点数", 5, 60, 25, key="cmp_n")
+    if lo >= hi:
+        st.warning("范围下限要小于上限。")
+        return
+    if not st.button("生成对比曲线", key="cmp_go", type="primary", use_container_width=True):
+        return
+    vals = [lo + (hi - lo) * i / (n - 1) for i in range(n)]
+    rows = design.compare(ENGINES[scenario].solve, scenario, params, pname, vals)
+    if len(rows) < 2:
+        st.warning("采样点太少或求解失败，把范围放宽些再试。")
+        return
+    fig = design.plot_compare(rows, scenario, pname, cur)
+    if fig is not None:
+        _darkfig(fig)
+        st.pyplot(fig)
+    spec = design.SENSITIVITY_SPEC[scenario]
+    st.dataframe(
+        {"参数值": [f"{v:.3g}" for v, _ in rows],
+         f"{spec['label']}（{spec['unit']}）": [f"{y:.4g}" for _, y in rows]},
+        use_container_width=True, hide_index=True,
+    )
 
 
 def render_metrics(scenario: str, data: dict):
@@ -764,3 +815,4 @@ else:
         render_result(scenario, params, can_apply=True)
     elif _calc[2].button("计算", type="primary", use_container_width=True):
         render_result(scenario, params, can_apply=True)
+    _compare_section(scenario, params)

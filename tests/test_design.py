@@ -107,3 +107,62 @@ def test_advice_vessel_safe_none():
     d = vessel.solve({"P": 1e6, "D": 1.0, "sigma_allow": 100e6})["data"]
     assert d["t_given"] is None          # 未校核
     assert design.advice("vessel", d) is None
+
+
+# ---- 参数对比 compare() / plot_compare() ----
+
+def test_compare_beam_I_monotonic_decreasing():
+    """I 增大 → 挠度减小（v ∝ 1/I），4 倍 I 应带来明显挠度差。"""
+    rows = design.compare(beam.solve, "beam", beam.DEFAULT_PARAMS, "I",
+                          [1e-5, 5e-5, 1e-4, 5e-4])
+    assert len(rows) == 4
+    outs = [y for _, y in rows]
+    assert outs == sorted(outs, reverse=True)
+    assert outs[0] > outs[-1] * 3        # 实测 50×，留裕量断言
+
+
+def test_compare_beam_L_increasing():
+    """L 增大 → 挠度增大（v ∝ L³）。"""
+    rows = design.compare(beam.solve, "beam", beam.DEFAULT_PARAMS, "L", [2, 3, 4, 5])
+    outs = [y for _, y in rows]
+    assert outs == sorted(outs)
+    assert outs[-1] > outs[0] * 8        # 实测 ~18×，留裕量断言
+
+
+def test_compare_rows_sorted_ascending():
+    """输入乱序也按参数值升序返回（fragment 采样是升序，但函数自身保证）。"""
+    rows = design.compare(vessel.solve, "vessel", vessel.DEFAULT_PARAMS, "P",
+                          [2e6, 1e6, 3e6, 0.5e6])
+    vals = [v for v, _ in rows]
+    assert vals == sorted(vals)
+
+
+def test_compare_vessel_linear():
+    """t ∝ P：P 翻倍 → 所需壁厚翻倍（对比曲线最直白的线性亮点）。"""
+    rows = design.compare(vessel.solve, "vessel", vessel.DEFAULT_PARAMS, "P", [1e6, 2e6, 3e6])
+    ys = [y for _, y in rows]
+    assert abs(ys[1] - 2 * ys[0]) < 1e-6
+    assert abs(ys[2] - 3 * ys[0]) < 1e-6
+
+
+def test_plot_compare_returns_fig_with_current():
+    """当前值落在采样范围内 → 曲线 + 红点，返回 fig。"""
+    rows = design.compare(beam.solve, "beam", beam.DEFAULT_PARAMS, "I", [1e-5, 5e-5, 1e-4])
+    fig = design.plot_compare(rows, "beam", "I", 5e-5)
+    assert fig is not None
+    plt.close(fig)
+
+
+def test_plot_compare_none_too_few():
+    """采样点不足 → 返回 None（UI 兜底提示），不炸。"""
+    rows = design.compare(beam.solve, "beam", beam.DEFAULT_PARAMS, "I", [1e-5])
+    assert len(rows) < 2
+    assert design.plot_compare(rows, "beam", "I", 1e-5) is None
+
+
+def test_plot_compare_current_outside_range():
+    """当前值在采样范围外 → 不画红点、不崩，正常返回 fig。"""
+    rows = design.compare(beam.solve, "beam", beam.DEFAULT_PARAMS, "I", [1e-5, 5e-5, 1e-4])
+    fig = design.plot_compare(rows, "beam", "I", 1e-2)
+    assert fig is not None
+    plt.close(fig)

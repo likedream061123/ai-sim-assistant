@@ -42,6 +42,68 @@ SENSITIVITY_SPEC = {
 }
 
 
+# 参数中文名（对比曲线/轴标签用）。英文键对齐各引擎 DEFAULT_PARAMS。
+PARAM_LABELS = {
+    "pendulum": {"m": "质量 m", "l": "摆长 l", "g": "重力加速度 g", "c": "阻尼系数 c",
+                 "th0_deg": "初始角度 θ₀", "w0": "初始角速度 ω₀", "t_end": "仿真时长"},
+    "heat": {"L": "钢件半宽 L", "T0": "初始温度 T₀", "T_wall": "介质温度 T_wall",
+             "alpha": "热扩散系数 α", "T_target": "目标温度 T_target"},
+    "beam": {"L": "梁长 L", "P": "集中荷载 P", "a": "荷载距左端 a", "E": "弹性模量 E", "I": "惯性矩 I"},
+    "vessel": {"P": "内压 P", "D": "内径 D", "sigma_allow": "许用应力 σ", "t_given": "给定壁厚 t"},
+}
+
+
+def compare(engine_solve, scenario: str, params: dict, param_name: str, values: list) -> list:
+    """对参数 param_name 取 values 各值扫描目标输出，返回 [(值, 输出), ...] 按值升序。
+
+    与 sensitivity() 复用 SENSITIVITY_SPEC 的目标键/中文名，做的是同一层「设计师视角」：
+    敏感性回答「哪个参数影响最大」，对比回答「这个参数从 A 调到 B，结果怎么变」。
+    单个值求解失败（该参数组合物理上无解）跳过，不中断整体扫描。
+    """
+    spec = SENSITIVITY_SPEC[scenario]
+    rows = []
+    for v in values:
+        try:
+            out = engine_solve({**params, param_name: float(v)}, plot=False)["data"].get(spec["key_out"])
+        except Exception:
+            out = None
+        if out is not None:
+            rows.append((float(v), float(out)))
+    rows.sort(key=lambda r: r[0])
+    return rows
+
+
+def plot_compare(rows: list, scenario: str, param_name: str, current_value: float | None) -> plt.Figure | None:
+    """对比曲线：横轴 = 参数取值，纵轴 = 目标输出；当前值画红点。
+
+    rows=[(参数值, 输出), ...]。当前值落在采样范围内才画红点（曲线示意插值），
+    在范围外说明当前值不在对比窗口内，不误导。
+    参数跨度 >2 数量级时自动切对数轴（如惯性矩 I 1e-8~1 线性会挤成一条）。
+    """
+    if len(rows) < 2:
+        return None
+    spec = SENSITIVITY_SPEC[scenario]
+    label = PARAM_LABELS.get(scenario, {}).get(param_name, param_name)
+    xs = [r[0] for r in rows]
+    ys = [r[1] for r in rows]
+    fig, ax = plt.subplots(figsize=(7, 4.2))
+    ax.plot(xs, ys, "-", color="#3D7BFF", lw=2, marker="o", ms=4, mfc="white", mec="#3D7BFF")
+    if current_value is not None and min(xs) <= current_value <= max(xs):
+        cy = float(np.interp(current_value, xs, ys))
+        ax.plot([current_value], [cy], "o", ms=11, mfc="#E5484D", mec="white", mew=1.5,
+                label=f"当前值 = {current_value:.3g}")
+        ax.legend(loc="best", frameon=False)
+    if min(xs) > 0 and max(xs) / min(xs) > 100:
+        ax.set_xscale("log")
+    ax.set_xlabel(label, fontsize=10)
+    ax.set_ylabel(f"{spec['label']}（{spec['unit']}）", fontsize=10)
+    ax.set_title(f"参数对比 | {label} 变化 → {spec['label']}", fontsize=11)
+    ax.tick_params(colors="#2A3550")
+    ax.grid(True, color="#F0F0EB", linewidth=0.6)
+    fig.tight_layout()
+    return fig
+
+
 def sensitivity(engine_solve, scenario: str, params: dict, delta: float = 0.10) -> list:
     """扫描每个物理参数 ±delta，返回 [(参数名, 输出变化百分比), ...] 按影响降序。
 
