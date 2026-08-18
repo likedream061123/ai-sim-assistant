@@ -1,3 +1,6 @@
+import matplotlib
+
+matplotlib.use("Agg")  # 测试强制无 GUI 后端，避免 Windows 上 tkagg 间歇性 TclError
 import os
 import sys
 
