@@ -214,9 +214,9 @@ setTimeout(function(){frame(performance.now());},16);
 </script>
 """
 
-# st.components.v1.html 在 iframe 里执行（主文档的 markdown/html 都被剥 <script>，iframe 是唯一能跑 JS 的通道）
+# st.iframe 在 iframe 里执行（主文档的 markdown/html 都被剥 <script>，iframe 是唯一能跑 JS 的通道）
 # iframe 由 CSS 强制 position:fixed 全屏覆盖视口，作深蓝极光背景层
-st.components.v1.html(AURORA, height=2, scrolling=False)
+st.iframe(AURORA, height=2)
 
 # ---- 全站设计语言（CSS · 深蓝极光主题）----
 st.markdown("""
