@@ -3,3 +3,4 @@ __pycache__/
 .pytest_cache/
 .env
 .impeccable/
+.streamlit/secrets.toml
