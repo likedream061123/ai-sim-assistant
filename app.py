@@ -9,6 +9,7 @@
 - 动效：极光流动（背景）· Count Up 数字滚动（数据时刻）· 页面入场 · 卡片 hover
 - 克制：单 accent 亮靛蓝 #3D7BFF，琥珀只做示例点缀；metric 只用真实数据
 """
+import io
 import math
 import matplotlib
 # 统一图表主题（所有引擎图共享，白底、统一色板——在深色页里呈"白板"感）
@@ -470,6 +471,23 @@ def _darkfig(fig):
                 t.set_color(_TEXT)
 
 
+@st.fragment
+def _plot_section(figs: list) -> None:
+    """图表展示 + 大小调节（fragment 隔离）。
+
+    拖动「图表大小」滑块只 rerun 本 fragment —— 主脚本不重跑，图即时缩放，
+    而不会触发重新计算 / 重新调用 AI 解读。图以 PNG 缓存后 st.image 等比缩放，
+    避免 st.pyplot 固定宽度导致纵横比被拉扁。
+    """
+    w = st.slider("📐 图表大小", 480, 1280, 960, 20, key="plot_width")
+    st.caption("拖动滑块调整图表宽度（像素），比例自动保持；数据不变，只是视图缩放。")
+    for fig in figs:
+        _darkfig(fig)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=110, bbox_inches="tight")
+        st.image(buf.getvalue(), width=w)
+
+
 def render_metrics(scenario: str, data: dict):
     """关键数据卡：每行 3 个 st.metric（真实数值 + 溯源支撑，Count Up 数字滚动）。"""
     items = [(k, label, unit) for k, label, unit in DISPLAY[scenario] if k in data]
@@ -504,9 +522,7 @@ def render_result(scenario: str, params: dict, note: str = "",
     if any(isinstance(v, float) and (math.isnan(v) or math.isinf(v)) for v in res["data"].values()):
         st.error("参数不合理，结果发散（NaN/Inf）——请调整参数后重算。")
         return
-    for fig in res["figures"]:
-        _darkfig(fig)
-        st.pyplot(fig)
+    _plot_section(res["figures"])
     st.subheader("关键数据")
     render_metrics(scenario, res["data"])
 
