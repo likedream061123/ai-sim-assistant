@@ -50,6 +50,7 @@ html,body{margin:0;background:transparent;height:100%;overflow:hidden}
 .meteor.m2{top:16%;left:62%;animation:meteor-fall 10s linear infinite 3.5s}
 .meteor.m3{top:4%;left:92%;animation:meteor-fall 13s linear infinite 7s}
 .meteor.m4{top:24%;left:55%;animation:meteor-fall 16s linear infinite 10s}
+@media (prefers-reduced-motion: reduce) {.meteor{animation:none;opacity:0}}
 </style>
 <div id="aurora" style="position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden">
   <div class="meteor m1"></div><div class="meteor m2"></div>
@@ -57,6 +58,7 @@ html,body{margin:0;background:transparent;height:100%;overflow:hidden}
 </div>
 <script>
 (function(){
+if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { return; }
 var VERT = `#version 300 es
 in vec2 position;
 void main() {
@@ -219,7 +221,7 @@ st.components.v1.html(AURORA, height=2, scrolling=False)
 # ---- 全站设计语言（CSS · 深蓝极光主题）----
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap');
 
 .stApp { background:#05091A; }
 .block-container { position:relative; z-index:1; max-width:76rem; padding-top:1.8rem; padding-bottom:4.5rem;
@@ -232,7 +234,7 @@ st.markdown("""
   display:flex; align-items:center; justify-content:center; color:#fff; font-size:1.4rem;
   box-shadow:0 4px 18px rgba(61,123,255,.45);}
 .brand-name {font-size:1.6rem; font-weight:800; letter-spacing:-.02em; color:#fff; line-height:1.1;
-  font-family:'Plus Jakarta Sans','Segoe UI','Microsoft YaHei',sans-serif;
+  font-family:'Sora','Segoe UI','Microsoft YaHei',sans-serif;
   text-shadow:0 2px 24px rgba(61,123,255,.35);}
 .brand-sub {font-size:.82rem; color:#9fb4ff; margin-top:.12rem;}
 .accent-line {height:3px; width:100%; background:linear-gradient(90deg,#3D7BFF 0%,#3D7BFF 60%,#9A8CFF 100%);
@@ -242,14 +244,6 @@ st.markdown("""
 .hero-glow {position:fixed; top:16%; left:50%; transform:translateX(-50%);
   width:min(880px,94vw); height:460px; z-index:0; pointer-events:none;
   background:radial-gradient(50% 50% at 50% 45%, rgba(61,123,255,.17), rgba(61,123,255,.065) 46%, transparent 72%);}
-
-/* ---- 次级按钮 = 文字链接（无框）：示例直达 + 辅助动作，点击填入/查询 ---- */
-.stButton > button[kind="secondary"] {
-  background:transparent !important; border:none !important; box-shadow:none !important;
-  color:#8FA8E8 !important; font-weight:600; font-size:.88rem; padding:.2rem .1rem;
-  text-align:left; transition:color .15s ease, transform .15s ease;}
-.stButton > button[kind="secondary"]:hover {background:transparent !important; color:#fff !important; transform:translateX(2px);}
-.stButton > button[kind="secondary"]:focus {box-shadow:none !important;}
 
 /* ---- 问题输入 hero：页面的唯一主角，大、淡、无压迫感 ---- */
 [data-testid="stTextArea"] {margin-top:1.6rem;}
@@ -261,7 +255,7 @@ st.markdown("""
   transition:border-color .15s ease, box-shadow .15s ease;}
 [data-testid="stTextArea"] textarea:focus {border-color:#3D7BFF;
   box-shadow:0 0 0 3px rgba(61,123,255,.25), 0 0 80px rgba(47,91,255,.3), inset 0 1px 0 rgba(255,255,255,.06);}
-[data-testid="stTextArea"] textarea::placeholder {color:#5E6D92;}
+[data-testid="stTextArea"] textarea::placeholder {color:#7A8CB3;}  /* 4.5:1 AA 达标 */
 
 /* ---- 其他原生控件（手动模式参数输入）：浅玻璃小圆角，不抢戏 ---- */
 [data-testid="stTextInput"] input,
@@ -291,11 +285,12 @@ st.markdown("""
   border:none; border-radius:12px; color:#fff; font-weight:700; letter-spacing:.015em;
   text-shadow:0 1px 8px rgba(10,20,60,.45);
   box-shadow:0 0 14px rgba(47,91,255,.4), 0 0 38px rgba(47,91,255,.2), inset 0 1px 0 rgba(255,255,255,.3);
-  animation:btn-shimmer 5s ease-in-out infinite;
 }
-@keyframes btn-shimmer {0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%}}
+@keyframes btn-shimmer {from{background-position:0% 50%} to{background-position:100% 50%}}
 .stButton > button[kind="primary"]:hover {
   transform:translateY(-1px);
+  background-position:100% 50%;
+  animation:btn-shimmer .9s ease-out 1 forwards;
   box-shadow:0 0 22px rgba(47,91,255,.6), 0 0 62px rgba(47,91,255,.32), inset 0 1px 0 rgba(255,255,255,.4);}
 .stButton > button[kind="primary"]:active {transform:translateY(0);
   box-shadow:0 0 12px rgba(47,91,255,.5), inset 0 2px 8px rgba(0,0,0,.3);}
@@ -310,8 +305,17 @@ st.markdown("""
   box-shadow:0 12px 36px rgba(0,5,25,.5);}
 [data-testid="stMetricLabel"] {font-size:.76rem; color:#9FB4FF;}
 [data-testid="stMetricValue"] {font-size:1.55rem; font-weight:800; letter-spacing:-.01em;
-  font-family:'Plus Jakarta Sans','Segoe UI','Microsoft YaHei',sans-serif; color:#FFFFFF;
+  font-family:'Sora','Segoe UI','Microsoft YaHei',sans-serif; color:#FFFFFF;
   text-shadow:0 2px 18px rgba(61,123,255,.35);}
+
+/* ---- 完成时刻（orchestrated reveal，唯一编排动效）：图表先淡入，数据卡依次浮起 ---- */
+@keyframes card-rise { from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none} }
+@keyframes chart-fade { from{opacity:0; transform:scale(.99); filter:blur(5px)} to{opacity:1; transform:none; filter:blur(0)} }
+[data-testid="stImage"], .element-container:has(img) {animation:chart-fade .6s cubic-bezier(.16,1,.3,1) .05s both;}
+[data-testid="stMetric"] {animation:card-rise .5s cubic-bezier(.16,1,.3,1) .2s both;}
+[data-testid="stColumn"]:nth-child(2) [data-testid="stMetric"] {animation-delay:.27s;}
+[data-testid="stColumn"]:nth-child(3) [data-testid="stMetric"] {animation-delay:.34s;}
+[data-testid="stColumn"]:nth-child(4) [data-testid="stMetric"] {animation-delay:.41s;}
 
 /* ---- 标题/层级（深色页）---- */
 h1, h2, h3 {color:#fff !important; letter-spacing:-.02em; font-weight:800;}
@@ -354,8 +358,18 @@ h2 {font-size:1.15rem; margin-top:1.9rem; font-weight:700;}
 [data-testid="stToolbar"], [data-testid="stMainMenu"], [data-testid="stDecoration"] { background:transparent !important; }
 [data-testid="stFooter"] { background:linear-gradient(0deg, rgba(5,9,26,.9), rgba(5,9,26,0)) !important; }
 
+/* ---- 浏览器表面主题化（craft-floor：页面是搭出来的信号）---- */
+::-webkit-scrollbar {width:10px; height:10px;}
+::-webkit-scrollbar-track {background:transparent;}
+::-webkit-scrollbar-thumb {background:#1C2A4A; border-radius:6px; border:2px solid #05091A;}
+::-webkit-scrollbar-thumb:hover {background:#2A3550;}
+* {scrollbar-color:#1C2A4A rgba(255,255,255,.04); scrollbar-width:thin;}
+::selection {background:rgba(61,123,255,.45); color:#fff;}
+:focus-visible {outline:2px solid #3D7BFF; outline-offset:2px; border-radius:4px;}
+
 @media (prefers-reduced-motion: reduce) {
-  .block-container {animation:none;}
+  .block-container, [data-testid="stMetric"], [data-testid="stImage"], .element-container:has(img) {animation:none;}
+  .stButton > button[kind="primary"]:hover {animation:none;}
 }
 </style>
 """, unsafe_allow_html=True)
@@ -406,7 +420,7 @@ DISPLAY = {
     ],
 }
 
-st.set_page_config(page_title="AI 工程仿真助手", page_icon="⚙️", layout="wide")
+st.set_page_config(page_title="AI 工程仿真助手", page_icon="assets/favicon.svg", layout="wide")
 
 
 def _fmt(v, unit):
@@ -511,7 +525,7 @@ def _fill_example(text: str):
 # ---- 品牌 header ----
 st.markdown("""
 <div class="brand-header">
-  <div class="brand-logo">⚙️</div>
+  <div class="brand-logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03Z"/></svg></div>
   <div>
     <div class="brand-name">AI 工程仿真助手</div>
     <div class="brand-sub">一句话描述工程问题，AI 解析参数，数值真算，大白话解读。</div>
