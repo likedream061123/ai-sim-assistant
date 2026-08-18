@@ -11,6 +11,8 @@
 """
 import io
 import math
+import os
+
 import matplotlib
 # 统一图表主题（所有引擎图共享，白底、统一色板——在深色页里呈"白板"感）
 matplotlib.rcParams.update({
@@ -561,7 +563,7 @@ def render_result(scenario: str, params: dict, note: str = "",
         simple = {k: v for k, v in res["data"].items()
                   if isinstance(v, (int, float, str, bool)) or v is None}
         with st.spinner("生成解读…"):
-            text = llm.explain(scenario, simple)
+            text = llm.explain(scenario, simple, api_key=_ds_key() or None)
         st.subheader("AI 解读")
         st.info(text)
     except Exception:
@@ -586,6 +588,20 @@ def _apply_advice(adjust: dict):
     分支永远拿不到点击。on_click 在点击瞬间写入，主流程的 applied 分支消费。
     """
     st.session_state["advice_apply"] = adjust
+
+
+def _ds_key() -> str:
+    """DeepSeek API Key：应用内设置优先，回落环境变量（secrets.toml 注入）。
+
+    评委/用户没有项目 secrets 时，可在左侧「API 设置」填自己的 key；本地开发
+    留空自动用 secrets.toml 的。无 key 时 AI 解析/解读降级（手动模式不受影响）。
+    """
+    return st.session_state.get("api_key_ds") or os.environ.get("DEEPSEEK_API_KEY", "")
+
+
+def _serp_key() -> str:
+    """SerpApi Key：同上（仅「查钢梁典型参数」按钮需要，可选）。"""
+    return st.session_state.get("api_key_serp") or os.environ.get("SERPAPI_KEY", "")
 
 
 def _clamp(v, lo, hi):
@@ -613,6 +629,27 @@ st.markdown("""
 <div class="hero-glow"></div>
 """, unsafe_allow_html=True)
 
+# ---- 侧边栏：API 设置（评委/用户自带 key 的入口）----
+# 本地开发 secrets.toml 注入环境变量，留空即用；线上评审填自己的 key。
+# password 输入只读不回显，状态 caption 随 rerun 实时刷新。
+with st.sidebar:
+    st.markdown("##### ⚙️ API 设置")
+    st.text_input(
+        "DeepSeek API Key", type="password", key="api_key_ds",
+        placeholder="sk-...（AI 解析需要）",
+        help="自然语言解析 + AI 解读需要。本地留空自动用内置 secrets；线上演示请填自己的 key，否则只能用「手动输入」。",
+    )
+    st.text_input(
+        "SerpApi Key", type="password", key="api_key_serp",
+        placeholder="可选（查钢梁参数用）",
+        help="仅「查钢梁典型参数」按钮需要，可不填。",
+    )
+    st.caption(
+        ("✅ DeepSeek 已配置" if _ds_key() else "⚠️ DeepSeek 未配置——AI 解析/解读不可用")
+        + " · "
+        + ("✅ SerpApi 已配置" if _serp_key() else "SerpApi 未配置（可选）")
+    )
+
 mode = st.radio("输入方式", ["自然语言", "手动输入"], horizontal=True,
                 label_visibility="collapsed", key="input_mode")
 
@@ -622,12 +659,15 @@ if mode == "自然语言":
         placeholder="例：一根4米长的简支钢梁，距左端1.5米处承受10kN集中力，最大挠度多少？",
     )
     _btn = st.columns([5, 1, 2])
-    if _btn[2].button("解析并计算", type="primary", use_container_width=True):
+    _ds_ready = bool(_ds_key())
+    if _btn[2].button("解析并计算", type="primary", use_container_width=True,
+                      disabled=not _ds_ready):
         parsed, err = None, None
         with st.status("解析工程问题…", expanded=True) as s:
             try:
                 s.update(label="调用 AI 识别场景与参数…", state="running")
-                parsed = llm.parse_query(st.session_state.get("q_text", ""))
+                parsed = llm.parse_query(st.session_state.get("q_text", ""),
+                                         api_key=_ds_key() or None)
                 name = SCENARIOS_REV.get(parsed["scenario"], parsed["scenario"])
                 if parsed.get("params"):
                     st.write("AI 识别到的参数：", {k: v for k, v in parsed["params"].items()})
@@ -643,6 +683,8 @@ if mode == "自然语言":
             render_result(parsed["scenario"], parsed.get("params", {}), manualize=True)
         else:
             st.warning(f"{err} —— 请改用手动输入。")
+    elif not _ds_ready:
+        st.warning("未配置 DeepSeek API Key —— AI 解析暂不可用。请在左侧「API 设置」填你的 key，或切到「手动输入」直接算。")
 
     st.markdown('<div style="height:.5rem"></div>', unsafe_allow_html=True)
     st.caption("想快速试？点一个直接填入：")
@@ -685,7 +727,8 @@ else:
         if st.button("SerpApi 查钢梁典型参数"):
             try:
                 from agent import serpapi
-                info = serpapi.search("standard steel I-beam elastic modulus moment of inertia")
+                info = serpapi.search("standard steel I-beam elastic modulus moment of inertia",
+                                      api_key=_serp_key() or None)
                 st.write("搜索结果参考：", info[:2])
                 params.setdefault("E", 200e9)
                 params.setdefault("I", 5e-4)
