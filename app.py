@@ -1,8 +1,9 @@
 """AI 工程仿真助手 —— Streamlit 主入口（编排层）。
 
-架构: 输入 → (可选) LLM 解析 → 引擎计算 → 图+数据+解读。
+架构: 输入 → (可选) LLM 解析 → 引擎计算 → 图+数据+解读+参数溯源。
 引擎只管算，本文件只管串。手动表单是解析失败的兜底。
 """
+import math
 import matplotlib
 matplotlib.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]  # 雅黑自带中英文字形（3.9 无逐字形回退，放第一最稳）
 matplotlib.rcParams["axes.unicode_minus"] = False
@@ -16,16 +17,74 @@ SCENARIOS = {
     "钢梁挠度 (结构校核)": "beam",
     "压力容器壁厚 (设计)": "vessel",
 }
+SCENARIOS_REV = {v: k for k, v in SCENARIOS.items()}
 ENGINES = {
     "pendulum": engine.pendulum,
     "heat": engine.heat,
     "beam": engine.beam,
     "vessel": engine.vessel,
 }
+ENGINE_DEFAULTS = {
+    "pendulum": engine.pendulum.DEFAULT_PARAMS,
+    "heat": engine.heat.DEFAULT_PARAMS,
+    "beam": engine.beam.DEFAULT_PARAMS,
+    "vessel": engine.vessel.DEFAULT_PARAMS,
+}
+# 每场景关键数据卡：(data 键, 中文名, 单位) —— 只展示对用户有意义的键
+DISPLAY = {
+    "pendulum": [
+        ("T_num", "数值周期", "s"),
+        ("T0_small", "小角度理论周期", "s"),
+        ("T_ratio", "周期比 T/T₀", ""),
+        ("E0", "初始能量", "J"),
+        ("E_end", "终点能量", "J"),
+    ],
+    "heat": [
+        ("t_center_target", "冷却到目标温度时间", "s"),
+        ("steady_reached", "已达稳态", ""),
+    ],
+    "beam": [
+        ("v_max_mm", "最大挠度", "mm"),
+        ("x_max", "位置", "m"),
+        ("M_max", "最大弯矩", "N·m"),
+        ("v_allow", "许用挠度 L/360", "m"),
+        ("within_limit", "是否在限内", ""),
+    ],
+    "vessel": [
+        ("t_req_mm", "所需壁厚", "mm"),
+        ("sigma_actual", "实际应力", "Pa"),
+        ("safe", "是否安全", ""),
+    ],
+}
 
 st.set_page_config(page_title="AI 工程仿真助手", page_icon="⚙️")
 st.title("⚙️ AI 工程仿真助手")
 st.caption("工程问题一句话 → AI 解析 → 数值真算 → 图表 + 大白话解读。数值永不猜。")
+
+
+def _fmt(v, unit):
+    """把标量格式化成人类可读文本。"""
+    if isinstance(v, bool):
+        return "是" if v else "否"
+    if v is None:
+        return "—（未计算）"
+    if isinstance(v, float):
+        if math.isnan(v) or math.isinf(v):
+            return "发散"
+        if abs(v) < 1e-3 or abs(v) > 1e6:
+            return f"{v:.3e} {unit}".strip()
+        return f"{v:.4g} {unit}".strip()
+    return f"{v} {unit}".strip()
+
+
+def _show_sources(scenario: str, given: dict):
+    """参数溯源：哪些是你/AI 给的、哪些用了默认值（收尾卖点）。"""
+    defaults = ENGINE_DEFAULTS[scenario]
+    rows = []
+    for k, v in {**defaults, **(given or {})}.items():
+        rows.append({"参数": k, "取值": v, "来源": "你给的" if k in given else "已用默认"})
+    with st.expander("📋 参数与来源（溯源）", expanded=False):
+        st.dataframe(rows, hide_index=True)
 
 
 def render_result(scenario: str, params: dict, note: str = ""):
@@ -36,14 +95,20 @@ def render_result(scenario: str, params: dict, note: str = ""):
     except Exception as e:
         st.error(f"计算失败：{e}")
         return
+    # 数值异常兜底（spec §5）：NaN/发散 → 提示参数不合理
+    if any(isinstance(v, float) and (math.isnan(v) or math.isinf(v)) for v in res["data"].values()):
+        st.error("⚠️ 参数不合理，结果发散（NaN/Inf）——请调整参数后重算。")
+        return
     for fig in res["figures"]:
         st.pyplot(fig)
     st.subheader("关键数据")
-    for k, v in res["data"].items():
-        if isinstance(v, (int, float, str, bool)) or v is None:
-            st.write(f"- **{k}**: {v}")
+    d = res["data"]
+    for key, label, unit in DISPLAY[scenario]:
+        if key in d:
+            st.write(f"- **{label}**: {_fmt(d[key], unit)}")
+    _show_sources(scenario, params)
     try:
-        simple = {k: v for k, v in res["data"].items()
+        simple = {k: v for k, v in d.items()
                   if isinstance(v, (int, float, str, bool)) or v is None}
         with st.spinner("生成解读…"):
             text = llm.explain(scenario, simple)
@@ -63,7 +128,10 @@ if mode == "自然语言（AI 解析）":
     if st.button("解析并计算", type="primary"):
         try:
             parsed = llm.parse_query(text)
-            st.success(f"识别场景：{parsed['scenario']}")
+            name = SCENARIOS_REV.get(parsed["scenario"], parsed["scenario"])
+            st.success(f"识别场景：{name}")
+            if parsed.get("params"):
+                st.write("AI 识别到的参数：", {k: v for k, v in parsed["params"].items()})
             render_result(parsed["scenario"], parsed.get("params", {}))
         except ValueError as e:
             st.warning(f"{e} —— 请改用手动输入。")
@@ -95,9 +163,10 @@ else:
             try:
                 from agent import serpapi
                 info = serpapi.search("standard steel I-beam elastic modulus moment of inertia")
-                st.write("查到：", info[:2])
+                st.write("搜索结果参考：", info[:2])
                 params.setdefault("E", 200e9)
                 params.setdefault("I", 5e-4)
+                st.success("已填入典型钢梁参数 E=200 GPa、I=5e-4 m⁴，点下方「计算」生效（可再改）。")
             except Exception as e:
                 st.error(f"SerpApi 查询失败：{e}")
     elif scenario == "vessel":
