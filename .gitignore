@@ -5,3 +5,4 @@ __pycache__/
 .impeccable/
 .streamlit/secrets.toml
 .streamlit/local_keys.json
+.streamlit/history.json

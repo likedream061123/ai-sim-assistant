@@ -9,6 +9,7 @@
 - 动效：极光流动（背景）· Count Up 数字滚动（数据时刻）· 页面入场 · 卡片 hover
 - 克制：单 accent 亮靛蓝 #3D7BFF，琥珀只做示例点缀；metric 只用真实数据
 """
+import csv
 import io
 import json
 import math
@@ -35,6 +36,7 @@ matplotlib.rcParams.update({
     "legend.frameon": False,
     "axes.prop_cycle": matplotlib.cycler(color=["#2F5BFF", "#E07B3A", "#2A9D8F", "#7A6FE0"]),
 })
+import numpy as np
 import streamlit as st
 # set_page_config 必须是第一个 Streamlit 命令（layout=wide 与 favicon 在此生效）
 st.set_page_config(page_title="AI 工程仿真助手", page_icon="assets/favicon.svg", layout="wide")
@@ -653,6 +655,9 @@ def render_result(scenario: str, params: dict, note: str = "",
     _plot_section(res["figures"])
     st.subheader("关键数据")
     render_metrics(scenario, res["data"])
+    # 结果可带走（下载）+ 进本机历史（跨模式回看/载入）；只存参数和标量结果，不碰 API key
+    _save_history(scenario, params, res["data"])
+    _export_buttons(scenario, params, res["data"])
 
     # ---- 设计辅助 · 参数敏感性（改变谁对结果影响最大）----
     with st.expander("设计辅助 · 参数敏感性", expanded=True):
@@ -861,6 +866,152 @@ def _verification_section():
             st.markdown(f"- **{name}**：{val}　｜　{src}")
 
 
+# ---- 结果导出（评委可带走数据：完整 JSON + 表格 CSV）----
+def _export_json(scenario: str, params: dict, data: dict) -> str:
+    """结果 → 完整 JSON：标量结果 + 参数 + 曲线（heat 的温度曲线），含中文标签。"""
+    def clean(v):
+        if isinstance(v, np.ndarray):
+            return v.tolist()
+        if isinstance(v, (np.floating, np.integer)):
+            return float(v)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return float(v)
+        return v
+    scalar = {k: clean(v) for k, v in data.items()
+              if k != "params" and (isinstance(v, (int, float, str, bool)) or v is None)}
+    curves = {k: clean(data[k]) for k in ("t_arr", "T_center", "x") if data.get(k) is not None}
+    payload = {
+        "app": "AI 工程仿真助手",
+        "scenario": SCENARIOS_REV.get(scenario, scenario),
+        "params": {k: clean(v) for k, v in params.items()
+                   if isinstance(v, (int, float)) and not isinstance(v, bool)},
+        "results": scalar,
+        "curves": curves,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _export_csv(scenario: str, params: dict, data: dict) -> str:
+    """结果 → CSV：键值表（参数 + 结果标量），heat 再追加中心温度曲线长表。"""
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["项目", "值"])
+    w.writerow(["场景", SCENARIOS_REV.get(scenario, scenario)])
+    for k, v in sorted(params.items()):
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            w.writerow([f"参数·{k}", f"{v:g}"])
+    for k, v in data.items():
+        if k == "params":
+            continue
+        if isinstance(v, (int, float, str, bool)) or v is None:
+            w.writerow([f"结果·{k}", _fmt(v, "")])
+    if data.get("t_arr") is not None and data.get("T_center") is not None:
+        w.writerow([])
+        w.writerow(["t (s)", "中心温度 (°C)"])
+        for t, tc in zip(data["t_arr"], data["T_center"]):
+            w.writerow([f"{t:.4g}", f"{tc:.4g}"])
+    return buf.getvalue()
+
+
+def _export_buttons(scenario: str, params: dict, data: dict) -> None:
+    """关键数据下方的下载按钮区（JSON 完整 / CSV 表格）。"""
+    st.caption("📦 结果可以带走：")
+    c1, c2 = st.columns(2)
+    c1.download_button(
+        "导出 JSON（完整数据）", data=_export_json(scenario, params, data),
+        file_name=f"sim_{scenario}_results.json", mime="application/json",
+        key=f"dl_json_{scenario}", use_container_width=True,
+        help="完整结果：标量 + 参数 + 曲线（heat 温度曲线），给评审 / 归档用。")
+    c2.download_button(
+        "导出 CSV（表格）", data=_export_csv(scenario, params, data),
+        file_name=f"sim_{scenario}_results.csv", mime="text/csv",
+        key=f"dl_csv_{scenario}", use_container_width=True,
+        help="表格视图：参数与结果的键值表，Excel / 表格软件可直接打开。")
+
+
+# ---- 计算历史（本机持久化：算过的能一键载回表单，跨模式记忆）----
+_HISTORY_FILE = Path(__file__).resolve().parent / ".streamlit" / "history.json"
+_HISTORY_MAX = 15
+
+
+def _history_entry(scenario: str, params: dict, data: dict) -> dict:
+    scalar = {k: _fmt(v, "") for k, v in data.items()
+              if k != "params" and (isinstance(v, (int, float, str, bool)) or v is None)}
+    return {
+        "scenario": scenario,
+        "label": SCENARIOS_REV.get(scenario, scenario),
+        "params": {k: (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v)
+                   for k, v in params.items() if isinstance(v, (int, float)) and not isinstance(v, bool)},
+        "results": scalar,
+    }
+
+
+def _load_history() -> list:
+    try:
+        if _HISTORY_FILE.exists():
+            data = json.loads(_HISTORY_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return data
+    except Exception:
+        pass
+    return []
+
+
+def _save_history(scenario: str, params: dict, data: dict) -> None:
+    """把一次计算追加进本机历史（按场景+参数去重，最新在前，最多 _HISTORY_MAX 条）。
+
+    render_result 每次 rerun 都会重跑，历史最新一条若已是同参数就直接短路，
+    避免无谓写盘；仅存参数与标量结果，绝不碰 API key。
+    """
+    try:
+        entry = _history_entry(scenario, params, data)
+        hist = _load_history()
+        key = (entry["scenario"], json.dumps(entry["params"], sort_keys=True, ensure_ascii=False))
+        if hist and (hist[0].get("scenario"),
+                     json.dumps(hist[0].get("params", {}), sort_keys=True, ensure_ascii=False)) == key:
+            return
+        hist = [e for e in hist
+                if (e.get("scenario"),
+                    json.dumps(e.get("params", {}), sort_keys=True, ensure_ascii=False)) != key]
+        hist.insert(0, entry)
+        hist = hist[:_HISTORY_MAX]
+        _HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _HISTORY_FILE.write_text(json.dumps(hist, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _load_history_params(entry: dict) -> None:
+    """「载入参数」on_click：点击当下把历史参数写入手动表单并切过去（同 _manualize 模式）。"""
+    scenario = entry.get("scenario")
+    params = entry.get("params", {})
+    for _k in _MANUAL_WIDGET_KEYS.get(scenario, []):
+        st.session_state.pop(_k, None)
+    st.session_state["last_parse"] = {
+        "scenario": scenario,
+        "params": {**ENGINE_DEFAULTS.get(scenario, {}), **params},
+    }
+    st.session_state["input_mode"] = "手动输入"
+    st.session_state["scenario_select"] = SCENARIOS_REV.get(scenario, list(SCENARIOS)[0])
+
+
+def _history_section() -> None:
+    """手动模式底部的计算历史：本机最近 8 条，每条一键把参数载回表单。"""
+    hist = _load_history()
+    if not hist:
+        return
+    st.markdown("---")
+    with st.expander(f"📚 计算历史（本机 {len(hist)} 条）", expanded=False):
+        st.caption("刚才算过的都在这里，一键把参数带回来微调，不用重新打字。")
+        for i, e in enumerate(hist[:8]):
+            res_summary = " · ".join(f"{k}={v}" for k, v in list(e.get("results", {}).items())[:2])
+            c1, c2, c3 = st.columns([1, 4, 1])
+            c1.markdown(f"**{e.get('label', e.get('scenario', ''))}**")
+            c2.markdown(f"`{res_summary}`")
+            c3.button("载入参数", key=f"hist_load_{i}", use_container_width=True,
+                      on_click=_load_history_params, args=(e,))
+
+
 # ---- 品牌 header ----
 st.markdown("""
 <div class="brand-header">
@@ -981,6 +1132,7 @@ if mode == "自然语言":
         with col:
             st.button(sc, key=f"ex_{sc}", on_click=_fill_example, args=(q,), use_container_width=True)
 
+    _history_section()
     _verification_section()
 
 else:
@@ -1060,4 +1212,5 @@ else:
     elif _calc[2].button("计算", type="primary", use_container_width=True, key="calc_go"):
         render_result(scenario, params, can_apply=True)
     _compare_section(scenario, params)
+    _history_section()
     _verification_section()
