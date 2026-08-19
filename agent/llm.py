@@ -1,7 +1,10 @@
-"""DeepSeek 解析层: 中文工程问题 → 结构化 JSON。
+"""LLM 解析层（多服务商）: 中文工程问题 → 结构化 JSON。
 
 只做"人话→参数"翻译，不做任何计算。数值交给引擎。
 LLM 输出结构化 JSON，解析失败或不识别场景抛 ValueError（app 层兜底手动表单）。
+
+多服务商：全部走 OpenAI 兼容 API（OpenAI SDK 指定 base_url 即可），
+用户选服务商 + 填对应 key；缺 key 抛 ValueError。
 """
 from __future__ import annotations
 
@@ -10,20 +13,58 @@ import os
 from openai import OpenAI
 
 SCENARIOS = ("pendulum", "heat", "beam", "vessel")
-BASE_URL = "https://api.deepseek.com"
+
+# 主流服务商（OpenAI 兼容端点）。model 为默认模型，env 为环境变量名。
+PROVIDERS: dict[str, dict] = {
+    "deepseek": {
+        "label": "DeepSeek", "base_url": "https://api.deepseek.com",
+        "model": "deepseek-chat", "env": "DEEPSEEK_API_KEY",
+        "hint": "性价比高、中文强，本项目默认",
+    },
+    "openai": {
+        "label": "OpenAI (GPT)", "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini", "env": "OPENAI_API_KEY",
+        "hint": "需海外网络",
+    },
+    "zhipu": {
+        "label": "智谱 GLM", "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-4-flash", "env": "ZHIPU_API_KEY",
+        "hint": "glm-4-flash 有免费额度",
+    },
+    "dashscope": {
+        "label": "通义千问", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-plus", "env": "DASHSCOPE_API_KEY",
+        "hint": "阿里云百炼",
+    },
+    "moonshot": {
+        "label": "Kimi (Moonshot)", "base_url": "https://api.moonshot.cn/v1",
+        "model": "moonshot-v1-8k", "env": "MOONSHOT_API_KEY",
+        "hint": "长文本表现好",
+    },
+    "siliconflow": {
+        "label": "硅基流动", "base_url": "https://api.siliconflow.cn/v1",
+        "model": "deepseek-ai/DeepSeek-V3", "env": "SILICONFLOW_API_KEY",
+        "hint": "聚合多开源模型",
+    },
+}
 
 
-def _client(api_key: str | None = None) -> OpenAI:
-    key = api_key or os.environ.get("DEEPSEEK_API_KEY")
+def _client(api_key: str | None = None, provider: str = "deepseek") -> OpenAI:
+    """按服务商建 OpenAI 兼容 client。key 优先级: 入参 > 该服务商自己的环境变量。
+
+    各服务商 key 互不通用（不能拿 DeepSeek key 打智谱端点），所以不跨商兜底。
+    """
+    cfg = PROVIDERS.get(provider) or PROVIDERS["deepseek"]
+    key = api_key or os.environ.get(cfg["env"])
     if not key:
-        raise ValueError("缺少 DEEPSEEK_API_KEY（环境变量或参数）")
-    return OpenAI(api_key=key, base_url=BASE_URL)
+        raise ValueError(f"缺少 {cfg['label']} API Key（{cfg['env']}）")
+    return OpenAI(api_key=key, base_url=cfg["base_url"])
 
 
-def parse_query(text: str, api_key: str | None = None) -> dict:
-    """把一句中文工程问题解析为 {"scenario": ..., "params": {...}}。
+def parse_query(text: str, api_key: str | None = None, provider: str = "deepseek") -> dict:
+    """把一句中文工程问题解析为 {"scenario": ..., "params": ..., "recommended": ...}。
 
-    失败/不识别场景时抛 ValueError。
+    失败/不识别场景时抛 ValueError。provider 见 PROVIDERS 键。
     """
     sys_prompt = (
         "你是工程计算参数解析器。用户用中文描述一个工程问题，你识别场景并提取参数，只输出 JSON。\n"
@@ -46,9 +87,10 @@ def parse_query(text: str, api_key: str | None = None) -> dict:
         "只推荐缺失参数，已给的不要推荐。\n"
         '输出格式: {"scenario": "...", "params": {...}, "recommended": {...}}'
     )
+    cfg = PROVIDERS.get(provider) or PROVIDERS["deepseek"]
     try:
-        resp = _client(api_key).chat.completions.create(
-            model="deepseek-chat",
+        resp = _client(api_key, provider).chat.completions.create(
+            model=cfg["model"],
             messages=[{"role": "system", "content": sys_prompt},
                       {"role": "user", "content": text}],
             response_format={"type": "json_object"},
@@ -64,15 +106,17 @@ def parse_query(text: str, api_key: str | None = None) -> dict:
         raise ValueError(f"解析失败: {e}") from e
 
 
-def explain(scenario: str, data: dict, api_key: str | None = None) -> str:
+def explain(scenario: str, data: dict, api_key: str | None = None,
+            provider: str = "deepseek") -> str:
     """对计算结果生成 ≤80 字大白话解读（结果区展示）。"""
+    cfg = PROVIDERS.get(provider) or PROVIDERS["deepseek"]
     sys_prompt = (
         "你是工程仿真助手，用不超过80字的大白话解释一次计算的结果。"
         "面向非专业用户，说清楚'结果是什么、合理吗、要注意什么'。"
     )
     try:
-        resp = _client(api_key).chat.completions.create(
-            model="deepseek-chat",
+        resp = _client(api_key, provider).chat.completions.create(
+            model=cfg["model"],
             messages=[{"role": "system", "content": sys_prompt},
                       {"role": "user", "content": f"场景={scenario}，关键数据={json.dumps(data, ensure_ascii=False)}"}],
             temperature=0.3,

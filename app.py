@@ -681,7 +681,8 @@ def render_result(scenario: str, params: dict, note: str = "",
         simple = {k: v for k, v in res["data"].items()
                   if isinstance(v, (int, float, str, bool)) or v is None}
         with st.spinner("生成解读…"):
-            text = llm.explain(scenario, simple, api_key=_ds_key() or None)
+            text = llm.explain(scenario, simple, api_key=_ds_key() or None,
+                               provider=_llm_provider())
         st.subheader("AI 解读")
         st.info(text)
     except Exception:
@@ -746,37 +747,62 @@ _ADVICE_KEY_MAP = {
 }
 
 
-# ---- API key 本机持久化：填过一次就记住，下次打开免重填 ----
+# ---- LLM 服务商选择 + API key 本机持久化：填过一次就记住，下次打开免重填 ----
 _LOCAL_KEYS_FILE = Path(__file__).resolve().parent / ".streamlit" / "local_keys.json"
 
 
-def _load_local_keys() -> None:
-    """启动时把本机保存的 key 注入环境变量（secrets.toml 已有则不覆盖）。
+def _llm_provider() -> str:
+    """当前 LLM 服务商（session_state > 环境 LLM_PROVIDER > deepseek 兜底）。"""
+    return st.session_state.get("llm_provider") or os.environ.get("LLM_PROVIDER", "deepseek")
 
-    只影响 env fallback：用户会话里填的 key 优先级最高（_ds_key 先读 session_state）。
+
+def _llm_key(provider: str | None = None) -> str:
+    """指定/当前服务商的 key：会话填的优先，回落环境变量（secrets.toml 或本机记忆）。"""
+    provider = provider or _llm_provider()
+    cfg = llm.PROVIDERS.get(provider, llm.PROVIDERS["deepseek"])
+    return st.session_state.get(f"api_key_{provider}") or os.environ.get(cfg["env"], "")
+
+
+def _ds_key() -> str:
+    """兼容旧引用：返回当前服务商的 key（等价 _llm_key()）。"""
+    return _llm_key()
+
+
+def _load_local_keys() -> None:
+    """启动时把本机保存的各服务商 key 注入环境变量 + 恢复服务商选择。
+
+    只影响 env fallback：用户会话里填的 key 优先级最高（_llm_key 先读 session_state）。
     """
     try:
         if _LOCAL_KEYS_FILE.exists():
             data = json.loads(_LOCAL_KEYS_FILE.read_text(encoding="utf-8"))
-            if data.get("deepseek") and not os.environ.get("DEEPSEEK_API_KEY"):
-                os.environ["DEEPSEEK_API_KEY"] = data["deepseek"]
+            for pid, cfg in llm.PROVIDERS.items():
+                val = data.get(pid)
+                if val and not os.environ.get(cfg["env"]):
+                    os.environ[cfg["env"]] = val
             if data.get("serpapi") and not os.environ.get("SERPAPI_KEY"):
                 os.environ["SERPAPI_KEY"] = data["serpapi"]
+            if data.get("provider") and not os.environ.get("LLM_PROVIDER"):
+                os.environ["LLM_PROVIDER"] = data["provider"]
     except Exception:
         pass
 
 
 def _save_local_keys() -> None:
-    """侧边栏 key 输入框 on_change：把当前填的值存到本机文件（gitignore，不进仓库）。
+    """侧边栏 key 输入框 on_change：把当前填的各服务商 key + 选择存到本机文件。
 
     清空输入框再改别处 = 不保存该 key；文件仍保留旧的，可后续覆盖或手动删除。
     """
     try:
         data = {}
-        if st.session_state.get("api_key_ds"):
-            data["deepseek"] = st.session_state["api_key_ds"]
+        for pid in llm.PROVIDERS:
+            k = st.session_state.get(f"api_key_{pid}")
+            if k:
+                data[pid] = k
         if st.session_state.get("api_key_serp"):
             data["serpapi"] = st.session_state["api_key_serp"]
+        if st.session_state.get("llm_provider"):
+            data["provider"] = st.session_state["llm_provider"]
         _LOCAL_KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
         _LOCAL_KEYS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     except Exception:
@@ -784,15 +810,6 @@ def _save_local_keys() -> None:
 
 
 _load_local_keys()
-
-
-def _ds_key() -> str:
-    """DeepSeek API Key：应用内设置优先，回落环境变量（secrets.toml 或本机记忆）。
-
-    评委/用户没有项目 secrets 时，可在左侧「API 设置」填自己的 key（填过会自动记住，
-    下次打开免重填）；本地开发留空自动用 secrets.toml 的。无 key 时 AI 解析/解读降级。
-    """
-    return st.session_state.get("api_key_ds") or os.environ.get("DEEPSEEK_API_KEY", "")
 
 
 def _serp_key() -> str:
@@ -830,11 +847,20 @@ st.markdown("""
 # password 输入只读不回显，状态 caption 随 rerun 实时刷新。
 with st.sidebar:
     st.markdown("##### ⚙️ API 设置")
-    st.text_input(
-        "DeepSeek API Key", type="password", key="api_key_ds",
-        placeholder="sk-...（AI 解析需要）",
+    _prov = st.selectbox(
+        "LLM 服务商", list(llm.PROVIDERS),
+        index=list(llm.PROVIDERS).index(_llm_provider()) if _llm_provider() in llm.PROVIDERS else 0,
+        format_func=lambda p: llm.PROVIDERS[p]["label"],
+        key="llm_provider",
         on_change=_save_local_keys,
-        help="自然语言解析 + AI 解读需要。本地留空自动用内置 secrets；线上演示请填自己的 key，否则只能用「手动输入」。",
+        help="AI 解析 + 解读用的模型服务商，全部走 OpenAI 兼容接口。",
+    )
+    _pcfg = llm.PROVIDERS.get(_prov, llm.PROVIDERS["deepseek"])
+    st.text_input(
+        f"{_pcfg['label']} API Key", type="password", key=f"api_key_{_prov}",
+        placeholder=f"{_pcfg['env']}（AI 解析需要）",
+        on_change=_save_local_keys,
+        help=f"{_pcfg.get('hint', '')} 自然语言解析 + AI 解读需要。本地留空自动用内置 secrets；线上演示请填自己的 key，否则只能用「手动输入」。",
     )
     st.text_input(
         "SerpApi Key", type="password", key="api_key_serp",
@@ -843,7 +869,7 @@ with st.sidebar:
         help="仅「查钢梁典型参数」按钮需要，可不填。",
     )
     st.caption(
-        ("✅ DeepSeek 已配置" if _ds_key() else "⚠️ DeepSeek 未配置——AI 解析/解读不可用")
+        (f"✅ {_pcfg['label']} 已配置" if _llm_key(_prov) else f"⚠️ {_pcfg['label']} 未配置——AI 解析/解读不可用")
         + " · "
         + ("✅ SerpApi 已配置" if _serp_key() else "SerpApi 未配置（可选）")
     )
@@ -868,7 +894,8 @@ if mode == "自然语言":
             try:
                 s.update(label="调用 AI 识别场景与参数…", state="running")
                 parsed = llm.parse_query(st.session_state.get("q_text", ""),
-                                         api_key=_ds_key() or None)
+                                         api_key=_ds_key() or None,
+                                         provider=_llm_provider())
                 name = SCENARIOS_REV.get(parsed["scenario"], parsed["scenario"])
                 if parsed.get("params"):
                     st.write("AI 识别到的参数：", {k: v for k, v in parsed["params"].items()})
