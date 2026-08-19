@@ -34,6 +34,9 @@ matplotlib.rcParams.update({
     "axes.prop_cycle": matplotlib.cycler(color=["#2F5BFF", "#E07B3A", "#2A9D8F", "#7A6FE0"]),
 })
 import streamlit as st
+# set_page_config 必须是第一个 Streamlit 命令（layout=wide 与 favicon 在此生效）
+st.set_page_config(page_title="AI 工程仿真助手", page_icon="assets/favicon.svg", layout="wide")
+
 import engine.pendulum, engine.heat, engine.beam, engine.vessel, engine.design as design
 from agent import llm
 
@@ -443,8 +446,6 @@ DISPLAY = {
     ],
 }
 
-st.set_page_config(page_title="AI 工程仿真助手", page_icon="assets/favicon.svg", layout="wide")
-
 
 def _fmt(v, unit):
     """把标量格式化成人类可读文本。"""
@@ -614,6 +615,13 @@ def render_result(scenario: str, params: dict, note: str = "",
                   can_apply: bool = False, manualize: bool = False):
     if note:
         st.info(note)
+    # 物理参数合法性前置校验：简支梁荷载位置必须落在梁内（UI 范围静态，a 可超过 L）
+    if scenario == "beam":
+        _L, _a = params.get("L"), params.get("a")
+        if _L and _a and _a > _L:
+            st.error(f"荷载位置 a={_a:g} m 超过了梁长 L={_L:g} m —— 集中力落在梁外了，"
+                     f"请把 a 改到 {0:.1f} ~ {_L:g} m 之间再算。")
+            return
     try:
         res = ENGINES[scenario].solve(params)
     except Exception as e:
@@ -667,16 +675,12 @@ def render_result(scenario: str, params: dict, note: str = "",
         st.info(text)
     except Exception:
         pass
-    # AI 解析模式专属：一键把参数带到手动表单微调（完整工作流闭环）
+    # AI 解析模式专属：一键把参数带到手动表单微调（完整工作流闭环）。
+    # 状态切换走 on_click 回调：render_result 在 radio/selectbox 实例化之后才执行，
+    # 直接写 input_mode/scenario_select 会被 Streamlit 判为「widget 已实例化后修改」报错。
     if manualize:
-        if st.button("✏️ 切到手动模式微调参数", key="manualize_btn", use_container_width=True):
-            st.session_state["last_parse"] = {
-                "scenario": scenario,
-                "params": {**ENGINE_DEFAULTS[scenario], **params},
-            }
-            st.session_state["input_mode"] = "手动输入"
-            st.session_state["scenario_select"] = SCENARIOS_REV.get(scenario, list(SCENARIOS)[0])
-            st.rerun()
+        st.button("✏️ 切到手动模式微调参数", key="manualize_btn", use_container_width=True,
+                  on_click=_manualize, args=(scenario, params))
 
 
 def _apply_advice(adjust: dict):
@@ -687,6 +691,48 @@ def _apply_advice(adjust: dict):
     分支永远拿不到点击。on_click 在点击瞬间写入，主流程的 applied 分支消费。
     """
     st.session_state["advice_apply"] = adjust
+
+
+def _set_steel_defaults():
+    """SerpApi 按钮 on_click：点击当下写入典型钢梁参数，rerun 后输入框真实生效。"""
+    st.session_state["beam_E"] = 200e9
+    st.session_state["beam_I"] = 5e-4
+
+
+def _manualize(scenario: str, params: dict):
+    """「切到手动模式」on_click 回调：点击当下把 AI 参数带入手动表单并清残留。
+
+    用 on_click 而非按钮返回值分支：render_result 在 input_mode/scenario_select
+    widget 实例化之后才被调用，返回值分支在脚本执行路径里写这两个 key 会报
+    「widget 已实例化后不可修改」；on_click 在点击瞬间写入，rerun 时从新状态开始。
+    """
+    st.session_state.pop("ask_result", None)
+    st.session_state.pop("pending_ask", None)
+    # 手动化会带入 AI 新解析的参数；清掉本场景输入框 key，让表单以新值重新初始化
+    for _k in _MANUAL_WIDGET_KEYS.get(scenario, []):
+        st.session_state.pop(_k, None)
+    st.session_state["last_parse"] = {
+        "scenario": scenario,
+        "params": {**ENGINE_DEFAULTS[scenario], **params},
+    }
+    st.session_state["input_mode"] = "手动输入"
+    st.session_state["scenario_select"] = SCENARIOS_REV.get(scenario, list(SCENARIOS)[0])
+
+
+# 手动模式输入框的 widget key（有 key 后值由 session_state 主导：advice 一键应用要同步
+# 写这些 key，manualize 带入 AI 新解析值要清掉这些 key，否则输入框不跟随更新）。
+_MANUAL_WIDGET_KEYS = {
+    "pendulum": ["pend_th0", "pend_w0", "pend_t_end"],
+    "heat": ["heat_L", "heat_T0", "heat_T_wall", "heat_T_target"],
+    "beam": ["beam_L", "beam_P", "beam_a", "beam_E", "beam_I"],
+    "vessel": ["ves_P", "ves_D", "ves_sigma", "ves_t_given"],
+}
+# 参数名 → widget key（advice 返回 adjust 用参数名，需要映射到带 key 的输入框）
+_ADVICE_KEY_MAP = {
+    "heat": {"L": "heat_L"},
+    "beam": {"E": "beam_E", "I": "beam_I"},
+    "vessel": {"t_given": "ves_t_given"},
+}
 
 
 def _ds_key() -> str:
@@ -828,52 +874,61 @@ else:
     params = {}
     if scenario == "pendulum":
         c1, c2, c3 = st.columns(3)
-        params["th0_deg"] = c1.number_input("初始角度 θ₀ (°)", 0.0, 180.0, _clamp(_last.get("th0_deg"), 0.0, 180.0))
-        params["w0"] = c2.number_input("初始角速度 ω₀ (rad/s)", 0.0, 20.0, _clamp(_last.get("w0"), 0.0, 20.0))
-        params["t_end"] = c3.number_input("时长 (s)", 1.0, 60.0, _clamp(_last.get("t_end"), 1.0, 60.0))
+        params["th0_deg"] = c1.number_input("初始角度 θ₀ (°)", 0.0, 180.0, _clamp(_last.get("th0_deg"), 0.0, 180.0), key="pend_th0")
+        params["w0"] = c2.number_input("初始角速度 ω₀ (rad/s)", 0.0, 20.0, _clamp(_last.get("w0"), 0.0, 20.0), key="pend_w0")
+        params["t_end"] = c3.number_input("时长 (s)", 1.0, 60.0, _clamp(_last.get("t_end"), 1.0, 60.0), key="pend_t_end")
     elif scenario == "heat":
         c1, c2, c3 = st.columns(3)
-        params["L"] = c1.number_input("钢件半宽 (m)", 0.01, 1.0, _clamp(_last.get("L"), 0.01, 1.0), format="%.3f")
-        params["T0"] = c2.number_input("初始温度 (°C)", 100.0, 1500.0, _clamp(_last.get("T0"), 100.0, 1500.0))
-        params["T_wall"] = c3.number_input("介质温度 (°C)", 0.0, 500.0, _clamp(_last.get("T_wall"), 0.0, 500.0))
-        params["T_target"] = st.number_input("目标温度 (°C)", 0.0, 1500.0, _clamp(_last.get("T_target"), 0.0, 1500.0))
+        params["L"] = c1.number_input("钢件半宽 (m)", 0.01, 1.0, _clamp(_last.get("L"), 0.01, 1.0), format="%.3f", key="heat_L")
+        params["T0"] = c2.number_input("初始温度 (°C)", 100.0, 1500.0, _clamp(_last.get("T0"), 100.0, 1500.0), key="heat_T0")
+        params["T_wall"] = c3.number_input("介质温度 (°C)", 0.0, 500.0, _clamp(_last.get("T_wall"), 0.0, 500.0), key="heat_T_wall")
+        params["T_target"] = st.number_input("目标温度 (°C)", 0.0, 1500.0, _clamp(_last.get("T_target"), 0.0, 1500.0), key="heat_T_target")
     elif scenario == "beam":
         c1, c2, c3 = st.columns(3)
-        params["L"] = c1.number_input("梁长 (m)", 0.1, 20.0, _clamp(_last.get("L"), 0.1, 20.0))
-        params["P"] = c2.number_input("集中荷载 (N)", 100.0, 1e6, _clamp(_last.get("P"), 100.0, 1e6), format="%.0f")
-        params["a"] = c3.number_input("荷载距左端 (m)", 0.1, 19.9, _clamp(_last.get("a"), 0.1, 19.9))
+        params["L"] = c1.number_input("梁长 (m)", 0.1, 20.0, _clamp(_last.get("L"), 0.1, 20.0), key="beam_L")
+        params["P"] = c2.number_input("集中荷载 (N)", 100.0, 1e6, _clamp(_last.get("P"), 100.0, 1e6), format="%.0f", key="beam_P")
+        params["a"] = c3.number_input("荷载距左端 (m)", 0.1, 19.9, _clamp(_last.get("a"), 0.1, 19.9), key="beam_a")
         c4, c5 = st.columns(2)
-        params["E"] = c4.number_input("弹性模量 E (Pa)", 1e9, 1e12, _clamp(_last.get("E"), 1e9, 1e12), format="%.3g")
-        params["I"] = c5.number_input("惯性矩 I (m4)", 1e-8, 1.0, _clamp(_last.get("I"), 1e-8, 1.0), format="%.3g")
-        if st.button("SerpApi 查钢梁典型参数"):
-            try:
-                from agent import serpapi
-                info = serpapi.search("standard steel I-beam elastic modulus moment of inertia",
-                                      api_key=_serp_key() or None)
-                st.write("搜索结果参考：", info[:2])
-                params.setdefault("E", 200e9)
-                params.setdefault("I", 5e-4)
-                st.success("已填入典型钢梁参数 E=200 GPa、I=5e-4 m⁴，点下方「计算」生效（可再改）。")
-            except Exception as e:
-                st.error(f"SerpApi 查询失败：{e}")
+        params["E"] = c4.number_input("弹性模量 E (Pa)", 1e9, 1e12, _clamp(_last.get("E"), 1e9, 1e12),
+                                      format="%.3g", key="beam_E")
+        params["I"] = c5.number_input("惯性矩 I (m4)", 1e-8, 1.0, _clamp(_last.get("I"), 1e-8, 1.0),
+                                      format="%.3g", key="beam_I")
+        # 填典型参数走 on_click（点击当下写 session_state，rerun 后 number_input 真读新值）；
+        # 在线搜索仅作参考，不依赖它生效。
+        if st.button("SerpApi 查钢梁典型参数", key="serp_btn", on_click=_set_steel_defaults):
+            if _serp_key():
+                try:
+                    from agent import serpapi
+                    info = serpapi.search("standard steel I-beam elastic modulus moment of inertia",
+                                          api_key=_serp_key())
+                    st.write("搜索结果参考：", info[:2])
+                except Exception as e:
+                    st.error(f"SerpApi 查询失败：{e}")
+            else:
+                st.info("未配置 SerpApi Key，已直接填入典型钢梁参数（E=200 GPa、I=5e-4 m⁴），点「计算」生效。")
+            st.success("已填入典型钢梁参数 E=200 GPa、I=5e-4 m⁴（可在上方输入框修改）。")
     elif scenario == "vessel":
         c1, c2, c3 = st.columns(3)
-        params["P"] = c1.number_input("内压 (Pa)", 1e4, 1e8, _clamp(_last.get("P"), 1e4, 1e8), format="%.3g")
-        params["D"] = c2.number_input("内径 (m)", 0.1, 10.0, _clamp(_last.get("D"), 0.1, 10.0))
-        params["sigma_allow"] = c3.number_input("许用应力 (Pa)", 1e7, 1e9, _clamp(_last.get("sigma_allow"), 1e7, 1e9), format="%.3g")
+        params["P"] = c1.number_input("内压 (Pa)", 1e4, 1e8, _clamp(_last.get("P"), 1e4, 1e8), format="%.3g", key="ves_P")
+        params["D"] = c2.number_input("内径 (m)", 0.1, 10.0, _clamp(_last.get("D"), 0.1, 10.0), key="ves_D")
+        params["sigma_allow"] = c3.number_input("许用应力 (Pa)", 1e7, 1e9, _clamp(_last.get("sigma_allow"), 1e7, 1e9), format="%.3g", key="ves_sigma")
         # 校核模式：给「给定壁厚」→ 算实际应力是否超许用（补全 safe/advice 链路）
         adv_t = st.session_state.get("advice_apply", {}).get("t_given")
         do_check = st.checkbox("校核给定壁厚", value=bool(adv_t or _last.get("t_given")))
         if do_check:
             params["t_given"] = st.number_input(
                 "给定壁厚 t (m)", 0.001, 0.5, _clamp(adv_t or _last.get("t_given") or 0.006, 0.001, 0.5),
-                format="%.4f")
+                format="%.4f", key="ves_t_given")
     _calc = st.columns([5, 1, 2])
     # 「一键应用建议」：advice 按钮把调整参数存入 session_state 并 rerun，这里消费后
     # 更新 last_parse（输入框同步显示新值）+ auto_run 触发自动重算。
     applied = st.session_state.pop("advice_apply", None)
     if applied:
         params.update(applied)
+        # 带 key 的输入框值由 session_state 主导：同步写入，否则 input 框仍显示旧值
+        for _pname, _wkey in _ADVICE_KEY_MAP.get(scenario, {}).items():
+            if _pname in applied:
+                st.session_state[_wkey] = applied[_pname]
         st.session_state["last_parse"] = {"scenario": scenario, "params": {**params}}
         st.session_state["last_applied"] = applied
         st.session_state["auto_run"] = True
@@ -883,6 +938,6 @@ else:
         st.success("已应用设计建议：" + "，".join(f"{k} = {v:.3g}" for k, v in la.items())
                    + "，结果已重算（可在上方输入框继续微调）。")
         render_result(scenario, params, can_apply=True)
-    elif _calc[2].button("计算", type="primary", use_container_width=True):
+    elif _calc[2].button("计算", type="primary", use_container_width=True, key="calc_go"):
         render_result(scenario, params, can_apply=True)
     _compare_section(scenario, params)
