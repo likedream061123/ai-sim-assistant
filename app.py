@@ -400,6 +400,22 @@ ENGINE_DEFAULTS = {
     "beam": engine.beam.DEFAULT_PARAMS,
     "vessel": engine.vessel.DEFAULT_PARAMS,
 }
+# 缺失参数追问：AI 识别场景后，用户口语没提到的关键参数 → 反问补齐再算。
+# 只问「用户语言里会出现的东西」（角度/尺寸/荷载/温度）；工程常数（E/I/alpha/σ/重力）
+# 用户口语几乎不说，给默认值即可。也是「AI 理解了多少」的透明展示。
+ASKABLE_PARAMS = {
+    "pendulum": ["th0_deg", "l"],          # 初始角度 + 摆长
+    "heat": ["L", "T0", "T_wall", "T_target"],
+    "beam": ["L", "P", "a"],               # 荷载位置也问；E/I 默认工程值
+    "vessel": ["P", "D", "sigma_allow", "t_given"],
+}
+# 追问表单 number_input 的允许范围（与手动模式一致）
+PARAM_RANGES = {
+    "pendulum": {"th0_deg": (0.0, 180.0), "l": (0.1, 10.0)},
+    "heat": {"L": (0.01, 1.0), "T0": (100.0, 1500.0), "T_wall": (0.0, 500.0), "T_target": (0.0, 1500.0)},
+    "beam": {"L": (0.1, 20.0), "P": (100.0, 1e6), "a": (0.1, 19.9)},
+    "vessel": {"P": (1e4, 1e8), "D": (0.1, 10.0), "sigma_allow": (1e7, 1e9), "t_given": (0.001, 0.5)},
+}
 # 每场景关键数据卡：(data 键, 中文名, 单位) —— 只展示对用户有意义的键
 DISPLAY = {
     "pendulum": [
@@ -539,6 +555,38 @@ def _compare_section(scenario: str, params: dict) -> None:
          f"{spec['label']}（{spec['unit']}）": [f"{y:.4g}" for _, y in rows]},
         use_container_width=True, hide_index=True,
     )
+
+
+def _ask_missing(scenario: str, given: dict, missing: list) -> None:
+    """缺失参数追问：AI 已识别部分，把用户没说但需要的关键参数反问出来。
+
+    given: AI 从中文提取到的参数；missing: 用户没提、需要补齐的参数。
+    补齐后带着完整参数 render_result —— 这是「AI 会主动要参数」的透明感卖点，
+    也避免一句"梁会不会断"用默认值算完用户却不知情的尴尬。
+    """
+    labels = design.PARAM_LABELS.get(scenario, {})
+    st.markdown("---")
+    st.markdown("#### 🤔 AI 还需要你补充几个参数")
+    if given:
+        shown = "、".join(f"{labels.get(k, k)}={v:g}" for k, v in given.items())
+        st.caption(f"已识别：{shown}")
+    filled: dict = {}
+    cols = st.columns(2)
+    for i, p in enumerate(missing):
+        lo, hi = PARAM_RANGES[scenario][p]
+        dft = _clamp(ENGINE_DEFAULTS[scenario].get(p) or lo, lo, hi)
+        filled[p] = cols[i % 2].number_input(
+            labels.get(p, p), lo, hi, dft, format="%.3g",
+            key=f"ask_{scenario}_{p}",
+        )
+    st.caption("没提到的参数用工程默认值，结果区会标出哪些是默认（参数溯源）。")
+    if st.button("就用这些参数计算", type="primary", key="ask_go", use_container_width=True):
+        st.session_state.pop("pending_ask", None)   # 补齐完成，清除追问状态
+        params = {**given, **filled}
+        st.session_state["last_parse"] = {"scenario": scenario, "params": params}
+        # 结果入 session_state 而非直接渲染：后续 rerun（比如再改追问参数）结果卡仍在，
+        # 由主流程 ask_result 分支统一渲染（持久化）。
+        st.session_state["ask_result"] = {"scenario": scenario, "params": params}
 
 
 def render_metrics(scenario: str, data: dict):
@@ -712,7 +760,9 @@ if mode == "自然语言":
     _btn = st.columns([5, 1, 2])
     _ds_ready = bool(_ds_key())
     if _btn[2].button("解析并计算", type="primary", use_container_width=True,
-                      disabled=not _ds_ready):
+                      disabled=not _ds_ready, key="parse_go"):
+        st.session_state.pop("pending_ask", None)   # 重新解析，作废旧的追问
+        st.session_state.pop("ask_result", None)    # 旧的结果卡也让位给新解析
         parsed, err = None, None
         with st.status("解析工程问题…", expanded=True) as s:
             try:
@@ -727,15 +777,35 @@ if mode == "自然语言":
                 err = str(e)
                 s.update(label=f"解析失败：{err}", state="error", expanded=False)
         if parsed:
-            st.session_state["last_parse"] = {
-                "scenario": parsed["scenario"],
-                "params": {**ENGINE_DEFAULTS.get(parsed["scenario"], {}), **parsed.get("params", {})},
-            }
-            render_result(parsed["scenario"], parsed.get("params", {}), manualize=True)
+            scenario = parsed["scenario"]
+            given = parsed.get("params", {})
+            missing = [p for p in ASKABLE_PARAMS.get(scenario, []) if p not in given]
+            if missing:
+                # 有用户没说但需要的关键参数 → 追问补齐，不让默认值悄悄替用户做决定。
+                # 状态入 session_state：用户填参数触发 rerun 时解析不在路径上，靠它恢复表单。
+                st.session_state["pending_ask"] = {
+                    "scenario": scenario, "given": given, "missing": missing}
+            else:
+                # 参数齐全 → 直接算；结果同样入 ask_result 持久渲染（自然语言模式结果卡
+                # 不因后续 rerun 丢失，直到下一次解析或切到手动模式）。
+                st.session_state["last_parse"] = {
+                    "scenario": scenario,
+                    "params": {**ENGINE_DEFAULTS.get(scenario, {}), **given},
+                }
+                st.session_state["ask_result"] = {"scenario": scenario, "params": given}
         else:
             st.warning(f"{err} —— 请改用手动输入。")
     elif not _ds_ready:
         st.warning("未配置 DeepSeek API Key —— AI 解析暂不可用。请在左侧「API 设置」填你的 key，或切到「手动输入」直接算。")
+
+    # rerun 恢复追问表单（用户填值触发 rerun 时解析不在路径上，靠 session_state 恢复）
+    _pending = st.session_state.get("pending_ask")
+    if _pending:
+        _ask_missing(_pending["scenario"], _pending["given"], _pending["missing"])
+    # 持久结果卡：补齐/直接算的结果在后续 rerun 中持续显示（渲染本身是幂等的）
+    _ask_res = st.session_state.get("ask_result")
+    if _ask_res:
+        render_result(_ask_res["scenario"], _ask_res["params"], manualize=True)
 
     st.markdown('<div style="height:.5rem"></div>', unsafe_allow_html=True)
     st.caption("想快速试？点一个直接填入：")

@@ -28,6 +28,9 @@ def parse_query(text: str, api_key: str | None = None) -> dict:
     sys_prompt = (
         "你是工程计算参数解析器。用户用中文描述一个工程问题，你识别场景并提取参数，只输出 JSON。\n"
         "场景只能是: pendulum(单摆/摆) heat(钢件冷却/热处理/降温) beam(梁/挠度/弯曲) vessel(压力容器/壁厚)。\n"
+        "先看判别词再定场景——出现【钢梁/简支梁/梁/挠度/集中力/集中荷载/弯矩/跨度/支承】判 beam；"
+        "【摆/摆动/钟摆/周期】判 pendulum；【冷却/降温/热处理/温度场/钢件】判 heat；"
+        "【压力容器/内压/壁厚/筒体/许用应力】判 vessel。含『梁』或『挠度』的绝不判 pendulum。\n"
         "参数用 camelCase，沿用字段名: \n"
         "  pendulum: th0_deg(初始角度度) w0(初始角速度) t_end(时长) m l g c\n"
         "  heat: L(半宽m) T0(初始°C) T_wall(介质°C) T_target(目标°C) alpha\n"
