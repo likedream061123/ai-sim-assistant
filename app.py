@@ -42,6 +42,11 @@ st.set_page_config(page_title="AI 工程仿真助手", page_icon="assets/favicon
 import engine.pendulum, engine.heat, engine.beam, engine.vessel, engine.design as design
 from agent import llm
 
+# Streamlit 长驻进程会缓存已 import 的子模块（sys.modules）——改过 agent/*.py 后旧进程
+# rerun 仍拿到旧模块（曾出现缺 PROVIDERS）。强制 reload 让页面始终用磁盘最新代码。
+import importlib
+importlib.reload(llm)
+
 # ---- 背景极光（ReactBits Aurora · 原生 WebGL 移植，蓝色系）----
 AURORA = r"""
 <style>
