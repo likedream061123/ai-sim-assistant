@@ -15,7 +15,7 @@
 
 ## 技术栈
 
-Streamlit · numpy/scipy/matplotlib · DeepSeek（OpenAI 兼容）· SerpApi
+Streamlit · numpy/scipy/matplotlib · LLM（OpenAI 兼容，多服务商）· SerpApi
 
 ## 快速开始
 
@@ -23,6 +23,25 @@ Streamlit · numpy/scipy/matplotlib · DeepSeek（OpenAI 兼容）· SerpApi
 pip install -r requirements.txt
 DEEPSEEK_API_KEY=xxx streamlit run app.py
 ```
+
+**没有 key 也能跑**：手动输入模式完整可用（不调用 AI）。填 key 后 AI 解析 + 大白话解读全开。
+可以在网页左侧「API 设置」直接填 key（填过会记住在本机，下次打开免重填），也可以用环境变量注入：
+
+| 服务商 | 环境变量 | 默认模型 |
+|---|---|---|
+| DeepSeek | `DEEPSEEK_API_KEY` | deepseek-chat |
+| OpenAI | `OPENAI_API_KEY` | gpt-4o-mini |
+| 智谱 GLM | `ZHIPU_API_KEY` | glm-4-flash |
+| 通义千问 | `DASHSCOPE_API_KEY` | qwen-plus |
+| Kimi | `MOONSHOT_API_KEY` | moonshot-v1-8k |
+| 硅基流动 | `SILICONFLOW_API_KEY` | deepseek-ai/DeepSeek-V3 |
+
+## AI 做了什么（评审关注点）
+
+1. **听懂**：一句中文 → 识别场景 + 提取参数（判别词 few-shot）
+2. **方案推荐**：你没说全的关键参数，AI 给出工程推荐值预填进追问表单，一键采纳
+3. **不算数**：所有数值由 scipy 求解器计算，MATLAB / ASME 基准复核
+4. **溯源透明**：结果区标注每个参数是你给的还是默认值，AI 解读大白话收尾
 
 ## 架构
 

@@ -43,9 +43,11 @@ import engine.pendulum, engine.heat, engine.beam, engine.vessel, engine.design a
 from agent import llm
 
 # Streamlit 长驻进程会缓存已 import 的子模块（sys.modules）——改过 agent/*.py 后旧进程
-# rerun 仍拿到旧模块（曾出现缺 PROVIDERS）。强制 reload 让页面始终用磁盘最新代码。
+# rerun 仍拿到旧模块（曾出现缺 PROVIDERS 报错）。检测到缺关键属性时强制 reload 自愈；
+# 正常路径不动模块，保持 mock/测试可 patch。
 import importlib
-importlib.reload(llm)
+if not hasattr(llm, "PROVIDERS"):
+    importlib.reload(llm)
 
 # ---- 背景极光（ReactBits Aurora · 原生 WebGL 移植，蓝色系）----
 AURORA = r"""
@@ -579,7 +581,8 @@ def _ask_missing(scenario: str, given: dict, missing: list,
     st.markdown("---")
     st.markdown("#### 🤔 AI 还需要你补充几个参数")
     if given:
-        shown = "、".join(f"{labels.get(k, k)}={v:g}" for k, v in given.items())
+        shown = "、".join(f"{labels.get(k, k)}={v if isinstance(v, str) else format(v, 'g')}"
+                          for k, v in given.items())
         st.caption(f"已识别：{shown}")
     filled: dict = {}
     cols = st.columns(2)
@@ -930,7 +933,7 @@ if mode == "自然语言":
         else:
             st.warning(f"{err} —— 请改用手动输入。")
     elif not _ds_ready:
-        st.warning("未配置 DeepSeek API Key —— AI 解析暂不可用。请在左侧「API 设置」填你的 key，或切到「手动输入」直接算。")
+        st.warning(f"未配置 {_pcfg['label']} API Key —— AI 解析暂不可用。请在左侧「API 设置」填你的 key，或切到「手动输入」直接算。")
 
     # rerun 恢复追问表单（用户填值触发 rerun 时解析不在路径上，靠 session_state 恢复）
     _pending = st.session_state.get("pending_ask")
@@ -945,11 +948,12 @@ if mode == "自然语言":
     st.markdown('<div style="height:.5rem"></div>', unsafe_allow_html=True)
     st.caption("想快速试？点一个直接填入：")
     EXAMPLES = [
+        ("动力学 · 单摆", "摆长1米的单摆，从120度松手，看它的周期和能量"),
         ("结构 · 钢梁", "一根4米简支钢梁，距左端1.5米处受10kN集中力，最大挠度多少？"),
         ("设计 · 容器", "内压1MPa、内径1米的压力容器，许用应力100MPa，需要多厚壁？"),
         ("传热 · 冷却", "半宽0.1米的钢件初始800度，放到20度空气中，中心要多久降到100度？"),
     ]
-    for col, (sc, q) in zip(st.columns(3), EXAMPLES):
+    for col, (sc, q) in zip(st.columns(4), EXAMPLES):
         with col:
             st.button(sc, key=f"ex_{sc}", on_click=_fill_example, args=(q,), use_container_width=True)
 
