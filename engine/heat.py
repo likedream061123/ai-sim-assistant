@@ -60,8 +60,14 @@ def solve_heat(params: dict | None = None, plot: bool = True) -> dict:
         if n % 100 == 0:
             T_center.append(float(u[0]))
             t_arr.append(n * dt)
+            # 提前终止：中心已到目标、且温降走完 99%（中心趋近壁温）就收尾。
+            # L 小 + tmax 大时 nstep 可达上千万步，若空转跑满全程极慢（L=0.01 实测 ~40s）。
+            # 只对「中心已降到目标温度」的工况生效，中心到不了目标时照常跑满。
+            if t_center_target is not None and u[0] - Tw <= 0.01 * (T0 - Tw):
+                break
 
-    steady_reached = abs(float(u[-1] - u[0])) < 1e-6   # 全场趋同（壁温）
+    # 全场趋同（壁温）——「充分冷却」语义，与提前终止判据一致
+    steady_reached = abs(float(u[-1] - u[0])) < 0.01 * abs(T0 - Tw)
 
     figs = []
     if plot:
