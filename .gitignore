@@ -4,3 +4,4 @@ __pycache__/
 .env
 .impeccable/
 .streamlit/secrets.toml
+.streamlit/local_keys.json

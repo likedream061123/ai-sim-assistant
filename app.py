@@ -10,8 +10,10 @@
 - 克制：单 accent 亮靛蓝 #3D7BFF，琥珀只做示例点缀；metric 只用真实数据
 """
 import io
+import json
 import math
 import os
+from pathlib import Path
 
 import matplotlib
 # 统一图表主题（所有引擎图共享，白底、统一色板——在深色页里呈"白板"感）
@@ -558,14 +560,17 @@ def _compare_section(scenario: str, params: dict) -> None:
     )
 
 
-def _ask_missing(scenario: str, given: dict, missing: list) -> None:
+def _ask_missing(scenario: str, given: dict, missing: list,
+                 recommended: dict | None = None) -> None:
     """缺失参数追问：AI 已识别部分，把用户没说但需要的关键参数反问出来。
 
-    given: AI 从中文提取到的参数；missing: 用户没提、需要补齐的参数。
-    补齐后带着完整参数 render_result —— 这是「AI 会主动要参数」的透明感卖点，
-    也避免一句"梁会不会断"用默认值算完用户却不知情的尴尬。
+    given: AI 从中文提取到的参数；missing: 用户没提、需要补齐的参数；
+    recommended: LLM 对缺失参数的推荐值 {"param": {"value": 数字, "reason": "..."}}，
+    预填进输入框（用户可改）——从「让用户填」升级为「AI 替你想好方案」。
+    补齐后带着完整参数 render_result —— 「AI 会主动要参数」的透明感卖点。
     """
     labels = design.PARAM_LABELS.get(scenario, {})
+    recommended = recommended or {}
     st.markdown("---")
     st.markdown("#### 🤔 AI 还需要你补充几个参数")
     if given:
@@ -575,11 +580,17 @@ def _ask_missing(scenario: str, given: dict, missing: list) -> None:
     cols = st.columns(2)
     for i, p in enumerate(missing):
         lo, hi = PARAM_RANGES[scenario][p]
-        dft = _clamp(ENGINE_DEFAULTS[scenario].get(p) or lo, lo, hi)
-        filled[p] = cols[i % 2].number_input(
-            labels.get(p, p), lo, hi, dft, format="%.3g",
-            key=f"ask_{scenario}_{p}",
-        )
+        rec = recommended.get(p) or {}
+        rec_val = rec.get("value")
+        dft = _clamp(rec_val if isinstance(rec_val, (int, float)) and not isinstance(rec_val, bool)
+                     else ENGINE_DEFAULTS[scenario].get(p) or lo, lo, hi)
+        with cols[i % 2]:
+            filled[p] = st.number_input(
+                labels.get(p, p), lo, hi, dft, format="%.3g",
+                key=f"ask_{scenario}_{p}",
+            )
+            if rec.get("reason"):
+                st.caption(f"✨ AI 推荐：{rec['reason']}（可直接用，也可改）")
     st.caption("没提到的参数用工程默认值，结果区会标出哪些是默认（参数溯源）。")
     if st.button("就用这些参数计算", type="primary", key="ask_go", use_container_width=True):
         st.session_state.pop("pending_ask", None)   # 补齐完成，清除追问状态
@@ -735,11 +746,51 @@ _ADVICE_KEY_MAP = {
 }
 
 
-def _ds_key() -> str:
-    """DeepSeek API Key：应用内设置优先，回落环境变量（secrets.toml 注入）。
+# ---- API key 本机持久化：填过一次就记住，下次打开免重填 ----
+_LOCAL_KEYS_FILE = Path(__file__).resolve().parent / ".streamlit" / "local_keys.json"
 
-    评委/用户没有项目 secrets 时，可在左侧「API 设置」填自己的 key；本地开发
-    留空自动用 secrets.toml 的。无 key 时 AI 解析/解读降级（手动模式不受影响）。
+
+def _load_local_keys() -> None:
+    """启动时把本机保存的 key 注入环境变量（secrets.toml 已有则不覆盖）。
+
+    只影响 env fallback：用户会话里填的 key 优先级最高（_ds_key 先读 session_state）。
+    """
+    try:
+        if _LOCAL_KEYS_FILE.exists():
+            data = json.loads(_LOCAL_KEYS_FILE.read_text(encoding="utf-8"))
+            if data.get("deepseek") and not os.environ.get("DEEPSEEK_API_KEY"):
+                os.environ["DEEPSEEK_API_KEY"] = data["deepseek"]
+            if data.get("serpapi") and not os.environ.get("SERPAPI_KEY"):
+                os.environ["SERPAPI_KEY"] = data["serpapi"]
+    except Exception:
+        pass
+
+
+def _save_local_keys() -> None:
+    """侧边栏 key 输入框 on_change：把当前填的值存到本机文件（gitignore，不进仓库）。
+
+    清空输入框再改别处 = 不保存该 key；文件仍保留旧的，可后续覆盖或手动删除。
+    """
+    try:
+        data = {}
+        if st.session_state.get("api_key_ds"):
+            data["deepseek"] = st.session_state["api_key_ds"]
+        if st.session_state.get("api_key_serp"):
+            data["serpapi"] = st.session_state["api_key_serp"]
+        _LOCAL_KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _LOCAL_KEYS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+_load_local_keys()
+
+
+def _ds_key() -> str:
+    """DeepSeek API Key：应用内设置优先，回落环境变量（secrets.toml 或本机记忆）。
+
+    评委/用户没有项目 secrets 时，可在左侧「API 设置」填自己的 key（填过会自动记住，
+    下次打开免重填）；本地开发留空自动用 secrets.toml 的。无 key 时 AI 解析/解读降级。
     """
     return st.session_state.get("api_key_ds") or os.environ.get("DEEPSEEK_API_KEY", "")
 
@@ -782,11 +833,13 @@ with st.sidebar:
     st.text_input(
         "DeepSeek API Key", type="password", key="api_key_ds",
         placeholder="sk-...（AI 解析需要）",
+        on_change=_save_local_keys,
         help="自然语言解析 + AI 解读需要。本地留空自动用内置 secrets；线上演示请填自己的 key，否则只能用「手动输入」。",
     )
     st.text_input(
         "SerpApi Key", type="password", key="api_key_serp",
         placeholder="可选（查钢梁参数用）",
+        on_change=_save_local_keys,
         help="仅「查钢梁典型参数」按钮需要，可不填。",
     )
     st.caption(
@@ -794,6 +847,7 @@ with st.sidebar:
         + " · "
         + ("✅ SerpApi 已配置" if _serp_key() else "SerpApi 未配置（可选）")
     )
+    st.caption("💾 填过的 key 会记住到本机，下次打开自动加载（不随网页关闭丢失）。")
 
 mode = st.radio("输入方式", ["自然语言", "手动输入"], horizontal=True,
                 label_visibility="collapsed", key="input_mode")
@@ -829,8 +883,10 @@ if mode == "自然语言":
             if missing:
                 # 有用户没说但需要的关键参数 → 追问补齐，不让默认值悄悄替用户做决定。
                 # 状态入 session_state：用户填参数触发 rerun 时解析不在路径上，靠它恢复表单。
+                # recommended：LLM 给的推荐值（预填进输入框，可改）。
                 st.session_state["pending_ask"] = {
-                    "scenario": scenario, "given": given, "missing": missing}
+                    "scenario": scenario, "given": given, "missing": missing,
+                    "recommended": parsed.get("recommended", {}) or {}}
             else:
                 # 参数齐全 → 直接算；结果同样入 ask_result 持久渲染（自然语言模式结果卡
                 # 不因后续 rerun 丢失，直到下一次解析或切到手动模式）。
@@ -847,7 +903,8 @@ if mode == "自然语言":
     # rerun 恢复追问表单（用户填值触发 rerun 时解析不在路径上，靠 session_state 恢复）
     _pending = st.session_state.get("pending_ask")
     if _pending:
-        _ask_missing(_pending["scenario"], _pending["given"], _pending["missing"])
+        _ask_missing(_pending["scenario"], _pending["given"], _pending["missing"],
+                     _pending.get("recommended"))
     # 持久结果卡：补齐/直接算的结果在后续 rerun 中持续显示（渲染本身是幂等的）
     _ask_res = st.session_state.get("ask_result")
     if _ask_res:
