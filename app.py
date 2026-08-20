@@ -783,7 +783,7 @@ def render_result(scenario: str, params: dict, note: str = "",
                   if isinstance(v, (int, float, str, bool)) or v is None}
         with st.spinner(tr("生成解读…")):
             text = llm.explain(scenario, simple, api_key=_ds_key() or None,
-                               provider=_llm_provider())
+                               provider=_llm_provider(), lang=i18n.LANG)
         st.subheader(tr("AI 解读"))
         st.info(text)
     except Exception:
@@ -1305,18 +1305,28 @@ if mode == "自然语言":
 
     st.markdown('<div style="height:.5rem"></div>', unsafe_allow_html=True)
     st.caption(tr("想快速试？点一个直接填入："))
+    # 示例卡：标签按 tr() 翻译；填入的问题文本跟随 UI 语言（en 提交态给英文，评审能直接跑）。
     EXAMPLES = [
-        ("动力学 · 单摆", "摆长1米的单摆，从120度松手，看它的周期和能量"),
-        ("结构 · 钢梁", "一根4米简支钢梁，距左端1.5米处受10kN集中力，最大挠度多少？"),
-        ("设计 · 容器", "内压1MPa、内径1米的压力容器，许用应力100MPa，需要多厚壁？"),
-        ("传热 · 冷却", "半宽0.1米的钢件初始800度，放到20度空气中，中心要多久降到100度？"),
-        ("电学 · RC充电", "100微法电容经1千欧电阻充到12伏，充到90%要多久？"),
-        ("流体 · 管道压降", "100米长、内径50mm的钢管，20方每小时的水压降多少？"),
+        ("动力学 · 单摆", "摆长1米的单摆，从120度松手，看它的周期和能量",
+         "A 1 m pendulum released from 120 degrees, show its period and energy"),
+        ("结构 · 钢梁", "一根4米简支钢梁，距左端1.5米处受10kN集中力，最大挠度多少？",
+         "a 4 m simply supported steel beam with 10 kN at 1.5 m from the left, what is the max deflection?"),
+        ("设计 · 容器", "内压1MPa、内径1米的压力容器，许用应力100MPa，需要多厚壁？",
+         "pressure vessel, 1 MPa internal pressure, 1 m inner diameter, 100 MPa allowable stress, how thick?"),
+        ("传热 · 冷却", "半宽0.1米的钢件初始800度，放到20度空气中，中心要多久降到100度？",
+         "steel part of half-width 0.1 m at 800 C cooled in 20 C air, how long until the center reaches 100 C?"),
+        ("电学 · RC充电", "100微法电容经1千欧电阻充到12伏，充到90%要多久？",
+         "100 uF capacitor charged through 1 k-ohm resistor to 12 V, how long to reach 90%?"),
+        ("流体 · 管道压降", "100米长、内径50mm的钢管，20方每小时的水压降多少？",
+         "100 m steel pipe, 50 mm inner diameter, 20 m3/h of water, what is the pressure drop?"),
     ]
     for i in range(0, len(EXAMPLES), 3):
-        for col, (sc, q) in zip(st.columns(3), EXAMPLES[i:i + 3]):
+        for col, (sc, q_zh, q_en) in zip(st.columns(3), EXAMPLES[i:i + 3]):
             with col:
-                st.button(tr(sc), key=f"ex_{sc}", on_click=_fill_example, args=(q,), use_container_width=True)
+                st.button(tr(sc), key=f"ex_{sc}",
+                          on_click=_fill_example,
+                          args=(q_en if i18n.LANG == "en" else q_zh,),
+                          use_container_width=True)
 
     _history_section()
     _verification_section()

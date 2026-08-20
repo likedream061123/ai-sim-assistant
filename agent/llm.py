@@ -114,13 +114,23 @@ def parse_query(text: str, api_key: str | None = None, provider: str = "deepseek
 
 
 def explain(scenario: str, data: dict, api_key: str | None = None,
-            provider: str = "deepseek") -> str:
-    """对计算结果生成 ≤80 字大白话解读（结果区展示）。"""
+            provider: str = "deepseek", lang: str = "zh") -> str:
+    """对计算结果生成 ≤80 字大白话解读（结果区展示）。
+
+    lang 跟随 UI：zh → 中文解读；en → 英文解读（评审/演示默认）。
+    """
     cfg = PROVIDERS.get(provider) or PROVIDERS["deepseek"]
-    sys_prompt = (
-        "你是工程仿真助手，用不超过80字的大白话解释一次计算的结果。"
-        "面向非专业用户，说清楚'结果是什么、合理吗、要注意什么'。"
-    )
+    if lang == "en":
+        sys_prompt = (
+            "You are an engineering simulation assistant. Explain the result of a "
+            "calculation in plain English, at most 80 words, for a non-expert user. "
+            "Say clearly: what the result is, whether it is reasonable, and what to watch out for."
+        )
+    else:
+        sys_prompt = (
+            "你是工程仿真助手，用不超过80字的大白话解释一次计算的结果。"
+            "面向非专业用户，说清楚'结果是什么、合理吗、要注意什么'。"
+        )
     try:
         resp = _client(api_key, provider).chat.completions.create(
             model=cfg["model"],

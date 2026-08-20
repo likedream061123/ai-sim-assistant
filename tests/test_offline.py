@@ -61,3 +61,20 @@ def test_keyword_fallback_scenario_only():
 def test_no_match_returns_none():
     for q in ("", "   ", "你好", "今天天气不错", "随便聊聊"):
         assert offline_cache.match_offline(q) is None, f"{q!r} 不应命中"
+
+
+def test_english_examples_hit_offline():
+    """英文评审无 key 输入英文问题 → 离线兜底仍能命中（示例问题中英双语）。"""
+    cases = {
+        "pendulum": "A 1 m pendulum released from 120 degrees, show its period and energy",
+        "beam": "a 4 m simply supported steel beam with 10 kN at 1.5 m from the left, what is the max deflection?",
+        "vessel": "pressure vessel, 1 MPa internal pressure, 1 m inner diameter, 100 MPa allowable stress, how thick?",
+        "heat": "steel part of half-width 0.1 m at 800 C cooled in 20 C air, how long until the center reaches 100 C?",
+        "rc_circuit": "100 uF capacitor charged through 1 k-ohm resistor to 12 V, how long to reach 90%?",
+        "pipe_flow": "100 m steel pipe, 50 mm inner diameter, 20 m3/h of water, what is the pressure drop?",
+    }
+    for scenario, q in cases.items():
+        hit = offline_cache.match_offline(q)
+        assert hit is not None, f"{scenario} 英文应命中离线解析"
+        assert hit["scenario"] == scenario
+        assert hit["params"], f"{scenario} 英文示例应带参数"
