@@ -211,8 +211,9 @@ def _main() -> None:
             print("7b) 有 key 查参 ✅ E 预填 195 GPa + 来源一致标注")
 
         # 7c) heat 在线查热扩散系数：共识值预填 heat_alpha + 来源一致标注
+        #     （用非默认值 1.65e-5，确保断言真正验证「预填生效」而非默认值）
         with patch("agent.serpapi.lookup_heat_material",
-                   return_value={"alpha": 1.17e-5,
+                   return_value={"alpha": 1.65e-5,
                                  "alpha_sources": [{"title": "Steel Diffusivity", "link": "https://ex.com/h1"}]}):
             at7 = AppTest.from_file(_APP, default_timeout=60)
             at7.session_state["lang"] = "zh"
@@ -225,14 +226,14 @@ def _main() -> None:
             assert b7, f"缺 heat 查参按钮: {[b.label for b in at7.button]}"
             b7[0].click().run()
             assert not at7.exception, f"heat 查参异常: {at7.exception}"
-            assert abs(at7.number_input(key="heat_alpha").value - 1.17e-5) < 1e-9, "α 应被预填"
+            assert abs(at7.number_input(key="heat_alpha").value - 1.65e-5) < 1e-9, "α 应被预填为在线值"
             succ7 = [s.value for s in at7.success]
             assert any("来源一致" in m for m in succ7), f"应显示来源一致: {succ7}"
-            print("7c) heat 查热扩散 ✅ α 预填 + 来源标注")
+            print("7c) heat 查热扩散 ✅ α 预填 1.65e-5 + 来源标注")
 
-        # 7d) pipe 在线查管壁粗糙度：共识值预填 pipe_eps
+        # 7d) pipe 在线查管壁粗糙度：共识值预填 pipe_eps（非默认 1e-4）
         with patch("agent.serpapi.lookup_pipe_roughness",
-                   return_value={"epsilon": 45e-6,
+                   return_value={"epsilon": 1e-4,
                                  "epsilon_sources": [{"title": "Roughness", "link": "https://ex.com/p1"}]}):
             at8 = AppTest.from_file(_APP, default_timeout=60)
             at8.session_state["lang"] = "zh"
@@ -245,8 +246,8 @@ def _main() -> None:
             assert b8, f"缺 pipe 查参按钮: {[b.label for b in at8.button]}"
             b8[0].click().run()
             assert not at8.exception, f"pipe 查参异常: {at8.exception}"
-            assert abs(at8.number_input(key="pipe_eps").value - 45e-6) < 1e-9, "ε 应被预填"
-            print("7d) pipe 查管壁粗糙度 ✅ ε 预填")
+            assert abs(at8.number_input(key="pipe_eps").value - 1e-4) < 1e-9, "ε 应被预填为在线值"
+            print("7d) pipe 查管壁粗糙度 ✅ ε 预填 1e-4")
 
         # 7e) rc 在线查常用元件：R/C 都预填
         with patch("agent.serpapi.lookup_rc_components",

@@ -841,8 +841,10 @@ def _serp_lookup_fill(scenario: str, lookup_fn, values: list[dict]) -> None:
             "online": isinstance(online, (int, float)),
             "sources": found.get(f"{key}_sources", []),
         })
-    for _k in _MANUAL_WIDGET_KEYS[scenario]:
-        st.session_state.pop(_k, None)
+        # 直接写带 key 输入框：rerun 后输入框读 session_state 新值（advice 一键应用
+        # 同款机制，云端已验证生效）。不用「pop key + last_parse 默认值」——后者在
+        # 云端新版 Streamlit 下 input 不跟随更新（本地 AppTest 却能过，属环境差异）。
+        st.session_state[v["widget"]] = val
     st.session_state["last_parse"] = {"scenario": scenario, "params": new_params}
     fallback_note = trf(
         "在线搜索未找到可靠一致值（或未配置 SerpApi Key），已填入内置典型值 {0} —— 可在输入框直接修改。",
@@ -852,32 +854,32 @@ def _serp_lookup_fill(scenario: str, lookup_fn, values: list[dict]) -> None:
 
 def _lookup_steel_defaults():
     _serp_lookup_fill("beam", serpapi.lookup_beam_material, [
-        {"key": "E", "label": "E", "default": 200e9, "lo": 1e9, "hi": 1e12,
+        {"key": "E", "label": "E", "widget": "beam_E", "default": 200e9, "lo": 1e9, "hi": 1e12,
          "fmt": lambda v: f"{v / 1e9:.0f} GPa"},
-        {"key": "I", "label": "I", "default": 5e-4, "lo": 1e-8, "hi": 1.0,
+        {"key": "I", "label": "I", "widget": "beam_I", "default": 5e-4, "lo": 1e-8, "hi": 1.0,
          "fmt": lambda v: f"{v:.4g} m⁴"},
     ])
 
 
 def _lookup_heat_defaults():
     _serp_lookup_fill("heat", serpapi.lookup_heat_material, [
-        {"key": "alpha", "label": "α", "default": 1.17e-5, "lo": 1e-7, "hi": 1e-4,
-         "fmt": lambda v: f"{v:.3g} m²/s"},
+        {"key": "alpha", "label": "α", "widget": "heat_alpha", "default": 1.17e-5,
+         "lo": 1e-7, "hi": 1e-4, "fmt": lambda v: f"{v:.3g} m²/s"},
     ])
 
 
 def _lookup_pipe_defaults():
     _serp_lookup_fill("pipe_flow", serpapi.lookup_pipe_roughness, [
-        {"key": "epsilon", "label": "ε", "default": 45e-6, "lo": 1e-6, "hi": 1e-3,
-         "fmt": lambda v: f"{v:.3g} m"},
+        {"key": "epsilon", "label": "ε", "widget": "pipe_eps", "default": 45e-6,
+         "lo": 1e-6, "hi": 1e-3, "fmt": lambda v: f"{v:.3g} m"},
     ])
 
 
 def _lookup_rc_defaults():
     _serp_lookup_fill("rc_circuit", serpapi.lookup_rc_components, [
-        {"key": "R", "label": "R", "default": 1000.0, "lo": 10.0, "hi": 1e6,
+        {"key": "R", "label": "R", "widget": "rc_R", "default": 1000.0, "lo": 10.0, "hi": 1e6,
          "fmt": lambda v: f"{v:.3g} Ω"},
-        {"key": "C", "label": "C", "default": 100e-6, "lo": 1e-9, "hi": 1e-2,
+        {"key": "C", "label": "C", "widget": "rc_C", "default": 100e-6, "lo": 1e-9, "hi": 1e-2,
          "fmt": lambda v: f"{v:.3g} F"},
     ])
 
