@@ -343,12 +343,13 @@ h2, h3 {color:#fff !important; letter-spacing:-.02em; font-weight:800;}
 h2 {font-size:1.15rem; margin-top:1.9rem; font-weight:700;}
 .stCaption {color:#9fb4ff;}
 
-/* ---- 结果/提示区 ---- */
-[data-testid="stInfo"] {border-radius:12px; background:rgba(61,123,255,.14); border:1px solid rgba(61,123,255,.3);
-  border-left:none; color:#dbe6ff;}
-[data-testid="stSuccess"] {border-radius:12px; border:none; background:rgba(42,157,143,.16); color:#d8fff9;}
-[data-testid="stWarning"] {border-radius:12px; border:none; background:rgba(224,123,58,.14); color:#ffe9d8;}
-[data-testid="stError"] {border-radius:12px; border:none; background:rgba(231,76,90,.16); color:#ffdadd;}
+/* ---- 结果/提示区：外层 stAlert 按内容类型配色（Streamlit 1.6x data-testid）---- */
+[data-testid="stAlert"] {border-radius:12px; overflow:hidden;}
+[data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]) {border:1px solid rgba(61,123,255,.3);
+  border-left:none; background:rgba(61,123,255,.14); color:#dbe6ff;}
+[data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]) {border:none; background:rgba(42,157,143,.16); color:#d8fff9;}
+[data-testid="stAlert"]:has([data-testid="stAlertContentWarning"]) {border:none; background:rgba(224,123,58,.14); color:#ffe9d8;}
+[data-testid="stAlert"]:has([data-testid="stAlertContentError"]) {border:none; background:rgba(231,76,90,.16); color:#ffdadd;}
 [data-testid="stExpander"] {border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05);}
 [data-testid="stExpander"] summary {color:#dbe6ff;}
 
@@ -391,7 +392,79 @@ h2 {font-size:1.15rem; margin-top:1.9rem; font-weight:700;}
 @media (prefers-reduced-motion: reduce) {
   .block-container, [data-testid="stMetric"], [data-testid="stImage"], .element-container:has(img) {animation:none;}
   .stButton > button[kind="primary"]:hover {animation:none;}
+  [data-testid="stSpinner"]::before, [data-testid="stSpinner"]::after,
+  [data-testid="stStatusWidgetRunningIcon"]::before, [data-testid="stStatusWidgetRunningIcon"]::after,
+  [data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]),
+  [data-testid="stAlert"]:has([data-testid="stAlertContentError"]), .sk-card::after {animation:none !important;}
 }
+
+/* ========== 状态反馈系统化（Phase 4）：四态 token 落地 ========== */
+
+/* -- loading 均衡器：替换 st.spinner / st.status 原生转圈（uiverse eq-bar 技法，stagger .25s）-- */
+@keyframes eq-scale {
+  0%, 40%, 100% { transform:scaleY(.55); background-color:rgba(61,123,255,.55); }
+  20% { transform:scaleY(1.5); background-color:#a8c6ff; }
+}
+[data-testid="stSpinner"] svg,
+[data-testid="stStatusWidgetRunningIcon"] svg { display:none !important; }
+[data-testid="stSpinner"],
+[data-testid="stStatusWidgetRunningIcon"] { display:flex; align-items:center; gap:4px; }
+[data-testid="stSpinner"]::before,
+[data-testid="stSpinner"]::after,
+[data-testid="stStatusWidgetRunningIcon"]::before,
+[data-testid="stStatusWidgetRunningIcon"]::after {
+  content:""; width:3px; height:18px; border-radius:10px;
+  background:rgba(61,123,255,.55);
+  animation:eq-scale 1s ease-in-out infinite;
+  flex:none;
+}
+[data-testid="stSpinner"]::before,
+[data-testid="stStatusWidgetRunningIcon"]::before { animation-delay:0s; }
+[data-testid="stSpinner"]::after,
+[data-testid="stStatusWidgetRunningIcon"]::after { animation-delay:.25s; }
+
+/* -- success check-in：打勾弹入（stateful-button ✓ 技法）-- */
+@keyframes check-in {
+  from { opacity:0; transform:scale(.7); }
+  to { opacity:1; transform:scale(1); }
+}
+[data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]) {
+  animation:check-in .25s cubic-bezier(.16,1,.3,1) both; transform-origin:center; }
+
+/* -- error shake：出错抖动入场 -- */
+@keyframes shake-x {
+  0%,100% { transform:translateX(0); }
+  20% { transform:translateX(-4px); }
+  40% { transform:translateX(4px); }
+  60% { transform:translateX(-3px); }
+  80% { transform:translateX(2px); }
+}
+[data-testid="stAlert"]:has([data-testid="stAlertContentError"]) { animation:shake-x .32s ease-out both; }
+
+/* -- empty 骨架 shimmer：未计算时的占位（aceternity skeletons 技法）-- */
+@keyframes sk-shimmer {
+  from { background-position:200% 0; }
+  to { background-position:-200% 0; }
+}
+.sk-hint { margin-top:.9rem; }
+.sk-row { display:flex; gap:14px; margin-bottom:.7rem; }
+.sk-card {
+  flex:1; min-height:76px; border-radius:14px;
+  border:1px dashed rgba(255,255,255,.14); background:rgba(255,255,255,.03);
+  padding:14px 16px; position:relative; overflow:hidden;
+}
+/* 有意的不完美：第二张卡矮一点且下沉 —— 一眼看出是「占位」不是残缺真结果 */
+.sk-card:nth-child(2) { min-height:66px; transform:translateY(5px); }
+.sk-card::after {
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(100deg, transparent 30%, rgba(61,123,255,.10) 50%, transparent 70%);
+  background-size:200% 100%;
+  animation:sk-shimmer 2.2s linear infinite;
+}
+.sk-line { height:10px; border-radius:6px; background:rgba(255,255,255,.09); margin-bottom:10px; }
+.sk-line.w60 { width:60%; }
+.sk-line.w40 { width:40%; }
+.sk-hint-text { color:#9fb4ff; font-size:.88rem; line-height:1.6; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -731,6 +804,20 @@ def render_result(scenario: str, params: dict, note: str = "",
     if manualize:
         st.button("✏️ 切到手动模式微调参数", key="manualize_btn", use_container_width=True,
                   on_click=_manualize, args=(scenario, params))
+
+
+def _empty_state_hint() -> None:
+    """空态占位：未计算/未解析时结果区不空白 —— shimmer 骨架 + 有态度引导（数值永不猜）。"""
+    st.markdown("""
+<div class="sk-hint">
+  <div class="sk-row">
+    <div class="sk-card"><div class="sk-line w60"></div><div class="sk-line w40"></div></div>
+    <div class="sk-card"><div class="sk-line w60"></div><div class="sk-line w40"></div></div>
+    <div class="sk-card"><div class="sk-line w60"></div><div class="sk-line w40"></div></div>
+  </div>
+  <div class="sk-hint-text">还没开算。数值不会骗你，但也不会自己跑来 —— 说一句工程问题，或点个示例。</div>
+</div>
+""", unsafe_allow_html=True)
 
 
 def _apply_advice(adjust: dict):
@@ -1105,6 +1192,7 @@ if mode == "自然语言":
         st.session_state.pop("pending_ask", None)   # 重新解析，作废旧的追问
         st.session_state.pop("ask_result", None)    # 旧的结果卡也让位给新解析
         parsed, err = None, None
+        st.session_state["ever_parsed"] = True   # 首次解析后空态骨架让位给真实反馈
         with st.status("解析工程问题…", expanded=True) as s:
             try:
                 s.update(label="调用 AI 识别场景与参数…", state="running")
@@ -1151,6 +1239,8 @@ if mode == "自然语言":
     _ask_res = st.session_state.get("ask_result")
     if _ask_res:
         render_result(_ask_res["scenario"], _ask_res["params"], manualize=True)
+    elif not _pending and not st.session_state.get("ever_parsed"):
+        _empty_state_hint()
 
     st.markdown('<div style="height:.5rem"></div>', unsafe_allow_html=True)
     st.caption("想快速试？点一个直接填入：")
@@ -1265,6 +1355,8 @@ else:
         render_result(scenario, params, can_apply=True)
     elif _calc[2].button("计算", type="primary", use_container_width=True, key="calc_go"):
         render_result(scenario, params, can_apply=True)
+    else:
+        _empty_state_hint()
     _compare_section(scenario, params)
     _history_section()
     _verification_section()
