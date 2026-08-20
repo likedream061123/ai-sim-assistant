@@ -50,6 +50,10 @@ DEEPSEEK_API_KEY=xxx streamlit run app.py
 3. **Never computes**: every number comes from scipy solvers, cross-checked against MATLAB / ASME baselines
 4. **Traceable**: the result panel marks every parameter as "you provided" vs "default used"; AI interpretation wraps up in plain language
 
+## Live parameter lookup (SerpApi) — the AI doesn't guess materials either
+
+For five of the six scenarios, one click searches the web for **real engineering values** instead of relying on built-in defaults: steel-beam E/I, steel/aluminum/copper thermal diffusivity, pipe wall roughness, RC component values, and pressure-vessel allowable stress. SerpApi results are **cross-checked across multiple sources into a consensus value** (outliers filtered by each material's physical range), then prefilled with the source links shown. Missing key or network? It gracefully falls back to built-in typical values — the demo never breaks.
+
 ## Architecture
 
 app.py (orchestration) → agent/llm.py (language → JSON) + agent/serpapi.py (parameter lookup) → engine/*.py (pure numerics) → charts + data + interpretation
@@ -59,6 +63,8 @@ app.py (orchestration) → agent/llm.py (language → JSON) + agent/serpapi.py (
 ```bash
 python -m pytest tests/ -v
 ```
+
+184 unit tests (parameter extractors, six engine kernels, E2E, offline fallback) + an AppTest smoke suite that drives the actual Streamlit UI in both languages — CI runs them on every push.
 
 ## Competition
 

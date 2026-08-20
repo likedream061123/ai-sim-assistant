@@ -286,3 +286,45 @@ def lookup_rc_components(api_key: str | None = None, num: int = 5) -> dict:
     C, C_srcs = _consensus(C_hits, 1e-9, 1e-2, 0.2)
     return {"R": R, "C": C,
             "R_sources": _dedup(R_srcs), "C_sources": _dedup(C_srcs)}
+
+
+
+# ---------------------------------------------------------------------------
+# 材料许用应力（vessel 的 sigma_allow）
+# ---------------------------------------------------------------------------
+
+def _extract_allowable_stress(text: str) -> list[float]:
+    """从文本提取许用应力候选值 [Pa]（ASME 碳钢容器常见 50~200 MPa）。
+
+    先找所有「数字+单位」候选，再检查该数字前方文本是否含 allowable/design/
+    working/许用 上下文——屈服强度、抗拉强度等无上下文值（通常高一档）自然剔除，
+    避免污染共识。支持 MPa / ksi / psi / N/mm²。
+    """
+    mult = {"mpa": 1e6, "ksi": 6.894757e6, "psi": 6894.757, "n/mm2": 1e6, "n/mm²": 1e6}
+    out = []
+    for m in re.finditer(
+        r"(\d[\d,]*(?:\.\d+)?)\s*(MPa|ksi|psi|N/mm2|N/mm²)", text, re.I):
+        v = float(m.group(1).replace(",", "")) * mult.get(m.group(2).lower(), 1.0)
+        if not (30e6 <= v <= 400e6):
+            continue
+        pre = text[max(0, m.start() - 60):m.start()]
+        if re.search(r"allowable|design|working|许用|许可", pre, re.I):
+            out.append(v)
+    return out
+
+
+def lookup_vessel_material(api_key: str | None = None, num: int = 5,
+                           material: str = "carbon steel") -> dict:
+    """搜索某容器材料许用应力并多源交叉，返回 {"sigma_allow", "sigma_allow_sources"}。"""
+    results: list[dict] = []
+    for q in (f"{material} allowable stress MPa",
+              "pressure vessel material allowable stress MPa"):
+        results.extend(search(q, api_key=api_key, num=num))
+    hits = []
+    for r in results:
+        text = f"{r['title']} {r['snippet']}"
+        src = {"title": r["title"], "link": r["link"]}
+        for v in _extract_allowable_stress(text):
+            hits.append((v, src))
+    sig, sig_srcs = _consensus(hits, 30e6, 400e6, 0.2)
+    return {"sigma_allow": sig, "sigma_allow_sources": _dedup(sig_srcs)}

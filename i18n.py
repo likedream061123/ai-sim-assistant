@@ -54,6 +54,12 @@ _EN: dict[str, str] = {
     "🔍 查钢热扩散系数（在线）": "🔍 Look up steel thermal diffusivity (online)",
     "🔍 查管壁粗糙度（在线）": "🔍 Look up pipe wall roughness (online)",
     "🔍 查常用元件值（在线）": "🔍 Look up common component values (online)",
+    "🔍 查热扩散系数（在线）": "🔍 Look up thermal diffusivity (online)",
+    "🔍 查材料许用应力（在线）": "🔍 Look up material allowable stress (online)",
+    "材料": "Material",
+    "⚙️ scipy 真算，绝不猜测": "⚙️ Computed by scipy — never guessed",
+    "🌐 SerpApi 实时查参（多源交叉）": "🌐 Live params via SerpApi (multi-source)",
+    "🧪 对照 MATLAB / ASME 验证": "🧪 Verified vs MATLAB / ASME",
     "热扩散系数 α (m²/s)": "Thermal diffusivity α (m²/s)",
     "绝对粗糙度 ε (m)": "Absolute roughness ε (m)",
     "已按在线来源填入 {0} = {1}（{2} 个来源一致）。":

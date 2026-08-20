@@ -222,7 +222,7 @@ def _main() -> None:
             assert not at7.exception, at7.exception
             at7.radio(key="input_mode").set_value("手动输入").run()
             at7.selectbox(key="scenario_select").set_value("钢件冷却 (热处理)").run()
-            b7 = [b for b in at7.button if "查钢热扩散系数" in b.label]
+            b7 = [b for b in at7.button if "查热扩散系数" in b.label]
             assert b7, f"缺 heat 查参按钮: {[b.label for b in at7.button]}"
             b7[0].click().run()
             assert not at7.exception, f"heat 查参异常: {at7.exception}"
@@ -278,12 +278,51 @@ def _main() -> None:
             assert not at10.exception, at10.exception
             at10.radio(key="input_mode").set_value("手动输入").run()
             at10.selectbox(key="scenario_select").set_value("钢件冷却 (热处理)").run()
-            b10 = [b for b in at10.button if "查钢热扩散系数" in b.label][0]
+            b10 = [b for b in at10.button if "查热扩散系数" in b.label][0]
             b10.click().run()
             assert not at10.exception, f"heat 查参失败异常: {at10.exception}"
             infos10 = [i.value for i in at10.info]
             assert any("内置典型值" in m for m in infos10), f"应回退内置值: {infos10}"
             print("7f) 新场景查参失败 ✅ 回退内置典型值")
+
+        # 7g) vessel 在线查材料许用应力：共识值预填 ves_sigma（非默认 150e6）
+        with patch("agent.serpapi.lookup_vessel_material",
+                   return_value={"sigma_allow": 150e6,
+                                 "sigma_allow_sources": [{"title": "A36", "link": "https://ex.com/v1"}]}):
+            at11 = AppTest.from_file(_APP, default_timeout=60)
+            at11.session_state["lang"] = "zh"
+            at11.session_state["api_key_serp"] = "sk-serp-test"
+            at11.run()
+            assert not at11.exception, at11.exception
+            at11.radio(key="input_mode").set_value("手动输入").run()
+            at11.selectbox(key="scenario_select").set_value("压力容器壁厚 (设计)").run()
+            b11 = [b for b in at11.button if "查材料许用应力" in b.label]
+            assert b11, f"缺 vessel 查参按钮: {[b.label for b in at11.button]}"
+            b11[0].click().run()
+            assert not at11.exception, f"vessel 查参异常: {at11.exception}"
+            assert abs(at11.number_input(key="ves_sigma").value - 150e6) < 1e5, "σ_allow 应被预填为在线值"
+            succ11 = [s.value for s in at11.success]
+            assert any("来源一致" in m for m in succ11), f"应显示来源一致: {succ11}"
+            print("7g) vessel 查许用应力 ✅ σ_allow 预填 150 MPa")
+
+        # 7h) heat 材料感知查参：选 aluminum → α 预填铝的热扩散系数（非默认 8.4e-5）
+        with patch("agent.serpapi.lookup_heat_material",
+                   return_value={"alpha": 8.4e-5,
+                                 "alpha_sources": [{"title": "Al Diff", "link": "https://ex.com/al1"}]}):
+            at12 = AppTest.from_file(_APP, default_timeout=60)
+            at12.session_state["lang"] = "zh"
+            at12.session_state["api_key_serp"] = "sk-serp-test"
+            at12.run()
+            assert not at12.exception, at12.exception
+            at12.radio(key="input_mode").set_value("手动输入").run()
+            at12.selectbox(key="scenario_select").set_value("钢件冷却 (热处理)").run()
+            at12.selectbox(key="heat_material").set_value("aluminum").run()
+            b12 = [b for b in at12.button if "查热扩散系数" in b.label]
+            assert b12, f"缺 heat 查参按钮: {[b.label for b in at12.button]}"
+            b12[0].click().run()
+            assert not at12.exception, f"heat 材料查参异常: {at12.exception}"
+            assert abs(at12.number_input(key="heat_alpha").value - 8.4e-5) < 1e-9, "α 应按铝材料预填"
+            print("7h) heat 材料感知查参 ✅ aluminum α 预填 8.4e-5")
 
         print("SMOKE ALL OK")
     finally:

@@ -267,6 +267,10 @@ st.markdown("""
   font-family:'Sora','Segoe UI','Microsoft YaHei',sans-serif;
   text-shadow:0 2px 24px rgba(61,123,255,.35);}
 .brand-sub {font-size:.82rem; color:#9fb4ff; margin-top:.12rem;}
+.brand-trust {display:flex; flex-wrap:wrap; gap:.4rem 1rem; margin-top:.5rem;
+  font-size:.72rem; color:#7f95c9; letter-spacing:.01em;}
+.brand-trust span {white-space:nowrap;}
+.brand-trust span:not(:last-child)::after {content:"·"; margin-left:1rem; color:#3d5070;}
 .accent-line {height:3px; width:100%; background:linear-gradient(90deg,#3D7BFF 0%,#3D7BFF 60%,#9A8CFF 100%);
   border-radius:2px; margin:.95rem 0 1.1rem; box-shadow:0 0 18px rgba(61,123,255,.45);}
 
@@ -862,7 +866,9 @@ def _lookup_steel_defaults():
 
 
 def _lookup_heat_defaults():
-    _serp_lookup_fill("heat", serpapi.lookup_heat_material, [
+    _mat = st.session_state.get("heat_material") or "steel"
+    _serp_lookup_fill("heat", lambda api_key=None: serpapi.lookup_heat_material(
+        api_key=api_key, material=_mat), [
         {"key": "alpha", "label": "α", "widget": "heat_alpha", "default": 1.17e-5,
          "lo": 1e-7, "hi": 1e-4, "fmt": lambda v: f"{v:.3g} m²/s"},
     ])
@@ -881,6 +887,13 @@ def _lookup_rc_defaults():
          "fmt": lambda v: f"{v:.3g} Ω"},
         {"key": "C", "label": "C", "widget": "rc_C", "default": 100e-6, "lo": 1e-9, "hi": 1e-2,
          "fmt": lambda v: f"{v:.3g} F"},
+    ])
+
+
+def _lookup_vessel_defaults():
+    _serp_lookup_fill("vessel", serpapi.lookup_vessel_material, [
+        {"key": "sigma_allow", "label": "σ_allow", "widget": "ves_sigma", "default": 100e6,
+         "lo": 1e7, "hi": 1e9, "fmt": lambda v: f"{v / 1e6:.0f} MPa"},
     ])
 
 
@@ -1223,6 +1236,11 @@ st.markdown(f"""
   <div>
     <div class="brand-name">{tr("AI 工程仿真助手")}</div>
     <div class="brand-sub">{tr("一句话描述工程问题，AI 解析参数，数值真算，大白话解读。")}</div>
+    <div class="brand-trust">
+      <span>{tr("⚙️ scipy 真算，绝不猜测")}</span>
+      <span>{tr("🌐 SerpApi 实时查参（多源交叉）")}</span>
+      <span>{tr("🧪 对照 MATLAB / ASME 验证")}</span>
+    </div>
   </div>
 </div>
 <div class="accent-line"></div>
@@ -1400,8 +1418,11 @@ else:
         params["alpha"] = st.number_input(tr("热扩散系数 α (m²/s)"), 1e-7, 1e-4,
                                           _clamp(_last.get("alpha"), 1e-7, 1e-4),
                                           format="%.3g", key="heat_alpha")
-        # 在线查参（SerpApi 多源交叉）：预填真实材料热扩散系数，来源标注在按钮分支
-        if st.button(tr("🔍 查钢热扩散系数（在线）"), key="serp_heat_btn",
+        # 材料感知在线查参：选材料 → SerpApi 多源交叉 → 预填 α，来源标注在按钮分支
+        _mats = {"steel": "Steel", "aluminum": "Aluminum", "copper": "Copper"}
+        _mat = st.selectbox(tr("材料"), list(_mats), key="heat_material",
+                            format_func=lambda m: _mats.get(m, m))
+        if st.button(tr("🔍 查热扩散系数（在线）"), key="serp_heat_btn",
                      on_click=_lookup_heat_defaults):
             _show_serp_lookup(st.session_state.get("serp_lookup") or {})
     elif scenario == "beam":
@@ -1431,6 +1452,10 @@ else:
             params["t_given"] = st.number_input(
                 tr("给定壁厚 t (m)"), 0.001, 0.5, _clamp(adv_t or _last.get("t_given") or 0.006, 0.001, 0.5),
                 format="%.4f", key="ves_t_given")
+        # 在线查参（SerpApi 多源交叉）：预填材料许用应力，来源标注在按钮分支
+        if st.button(tr("🔍 查材料许用应力（在线）"), key="serp_vessel_btn",
+                     on_click=_lookup_vessel_defaults):
+            _show_serp_lookup(st.session_state.get("serp_lookup") or {})
     elif scenario == "rc_circuit":
         c1, c2, c3 = st.columns(3)
         params["R"] = c1.number_input(tr("电阻 R (Ω)"), 10.0, 1e6, _clamp(_last.get("R"), 10.0, 1e6),

@@ -28,7 +28,7 @@ Every engineering student knows the struggle: you type a textbook problem into C
 - **Real computation, zero guessing**: steel beam deflection, steel quenching heat transfer, pressure-vessel wall thickness, RC charging, pipe pressure drop — all solved by numpy/scipy with analytic or standard baselines (MATLAB kernels, ASME thin-wall formula, Darcy-Weisbach).
 - **Engineering judgement built in**: sensitivity analysis shows which parameter moves your result most; over-limit checks propose a concrete fix (thicker wall, bigger inertia, larger pipe) and apply it with one click.
 - **Traceability**: every parameter is labelled "you provided" vs "engineering default" in the results panel; full JSON/CSV export; a verification section states the MATLAB/ASME baseline for each scenario.
-- **Live parameter lookup via SerpApi**: for the steel-beam scenario it searches the web, cross-checks multiple sources into a consensus value, prefills the inputs and marks the sources in a results panel; if the key or network is missing it falls back to built-in typical values, so the demo never breaks.
+- **Live parameter lookup via SerpApi**: five of the six scenarios search the web for real engineering values (steel-beam E/I, steel/aluminum/copper thermal diffusivity, pipe wall roughness, RC component values, pressure-vessel allowable stress), cross-check multiple sources into a consensus value, prefill the inputs and mark the sources in a results panel; if the key or network is missing it gracefully falls back to built-in typical values, so the demo never breaks.
 - **Works without an API key**: no network, no key — the natural-language pipeline still runs on a built-in offline matcher, so judges can try it live even with no connectivity.
 - **Bilingual UI**: English by default for the judging panel, Chinese available in the sidebar.
 
@@ -44,7 +44,7 @@ Streamlit frontend orchestrating a pipeline: an OpenAI-compatible LLM layer (Dee
 ## Accomplishments that we're proud of
 
 - The "sensitivity tornado" — a real designer's view: change inertia I ±10% and see the deflection swing, so users learn *which* parameter matters instead of blind trial-and-error.
-- The whole product is testable headlessly: 154 unit tests + an AppTest smoke suite that drives the actual Streamlit UI (manual mode, natural-language mode with mocked LLM, history, export, SerpApi lookup, extreme-input guard) in both languages.
+- The whole product is testable headlessly: 184 unit tests + an AppTest smoke suite that drives the actual Streamlit UI (manual mode, natural-language mode with mocked LLM, history, export, SerpApi lookup, extreme-input guard) in both languages.
 
 ## What we learned
 

@@ -257,3 +257,57 @@ def test_lookup_new_scenarios_no_consensus(monkeypatch):
     r = serpapi.lookup_rc_components(api_key="k")
     assert r["R"] is None and r["C"] is None
     assert r["R_sources"] == [] and r["C_sources"] == []
+
+
+
+# ---------------- 提取：材料许用应力 sigma_allow ----------------
+
+def test_extract_allowable_stress_mpa():
+    assert [v / 1e6 for v in serpapi._extract_allowable_stress("A36 allowable stress is 110 MPa")] == [110.0]
+
+
+def test_extract_allowable_stress_ksi():
+    # 25,000 psi = 172.4 MPa
+    assert abs(serpapi._extract_allowable_stress("design stress = 25,000 psi")[0] - 172.4e6) < 1e5
+
+
+def test_extract_allowable_stress_superscript_material():
+    # SS304 数字夹在材料名里，仍应命中后方的 138 MPa
+    vals = serpapi._extract_allowable_stress("ASME allowable stress for SS304 is 138 MPa")
+    assert abs(vals[0] - 138e6) < 1e5
+
+
+def test_extract_allowable_stress_filters_yield_uts():
+    # 屈服/抗拉强度无 allowable 上下文 → 剔除
+    assert serpapi._extract_allowable_stress("yield strength 250 MPa") == []
+    assert serpapi._extract_allowable_stress("UTS is 500 MPa") == []
+
+
+def test_extract_allowable_stress_range_filter():
+    # 范围 [30,400] MPa：25 太低、500 太高
+    assert serpapi._extract_allowable_stress("allowable stress 25 MPa") == []
+    assert serpapi._extract_allowable_stress("allowable stress 500 MPa") == []
+
+
+# ---------------- 完整工作流：vessel 查参 ----------------
+
+def test_lookup_vessel_material_crosschecks(monkeypatch):
+    fake = [
+        {"title": "A36", "snippet": "A36 steel allowable stress is 110 MPa",
+         "link": "https://ex.com/v1"},
+        {"title": "ASME", "snippet": "carbon steel design stress 110 MPa",
+         "link": "https://ex.com/v2"},
+        {"title": "noise", "snippet": "yield strength 250 MPa", "link": "https://ex.com/v3"},
+    ]
+    monkeypatch.setattr(serpapi, "search", lambda q, api_key=None, num=5: fake)
+    out = serpapi.lookup_vessel_material(api_key="k")
+    assert abs(out["sigma_allow"] - 110e6) < 1e5
+    assert len(out["sigma_allow_sources"]) == 2
+
+
+def test_lookup_vessel_material_no_consensus(monkeypatch):
+    fake = [{"title": "a", "snippet": "nothing relevant here", "link": "/a"},
+            {"title": "b", "snippet": "yield strength 250 MPa", "link": "/b"}]
+    monkeypatch.setattr(serpapi, "search", lambda q, api_key=None, num=5: fake)
+    out = serpapi.lookup_vessel_material(api_key="k")
+    assert out["sigma_allow"] is None and out["sigma_allow_sources"] == []
