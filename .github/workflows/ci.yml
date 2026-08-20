@@ -1,0 +1,27 @@
+name: CI
+
+# 全离线跑：测试 + 验证基准都不需要任何 API key / 网络（LLM 用 mock，基准是引擎默认值）。
+# 跑什么：
+#   pytest 单元测试（6 引擎 + robustness 兜底 + serpapi 多源交叉）
+#   verification/verify_benchmarks.py —— 「数值永不猜」的可复现证明
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Unit tests
+        run: python -m pytest tests/ -q
+      - name: Verification baselines
+        run: python verification/verify_benchmarks.py
