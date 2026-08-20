@@ -38,8 +38,13 @@ matplotlib.rcParams.update({
 })
 import numpy as np
 import streamlit as st
+
+import i18n
+from i18n import tr, trf, set_lang
+# set_lang 不是 Streamlit 命令，可放在 set_page_config 前；从侧边栏语言开关读当前语言（默认 en，提交/演示态）
+set_lang(st.session_state.get("lang", "en"))
 # set_page_config 必须是第一个 Streamlit 命令（layout=wide 与 favicon 在此生效）
-st.set_page_config(page_title="AI 工程仿真助手", page_icon="assets/favicon.svg", layout="wide")
+st.set_page_config(page_title=tr("AI 工程仿真助手"), page_icon="assets/favicon.svg", layout="wide")
 
 import engine.pendulum, engine.heat, engine.beam, engine.vessel, engine.design as design
 import engine.rc_circuit, engine.pipe_flow
@@ -534,12 +539,12 @@ DISPLAY = {
 def _fmt(v, unit):
     """把标量格式化成人类可读文本。"""
     if isinstance(v, bool):
-        return "是" if v else "否"
+        return tr("是") if v else tr("否")
     if v is None:
-        return "—（未计算）"
+        return tr("—（未计算）")
     if isinstance(v, float):
         if math.isnan(v) or math.isinf(v):
-            return "发散"
+            return tr("发散")
         if abs(v) < 1e-3 or abs(v) > 1e6:
             return f"{v:.3e} {unit}".strip()
         return f"{v:.4g} {unit}".strip()
@@ -583,8 +588,8 @@ def _plot_section(figs: list) -> None:
     而不会触发重新计算 / 重新调用 AI 解读。图以 PNG 缓存后 st.image 等比缩放，
     避免 st.pyplot 固定宽度导致纵横比被拉扁。
     """
-    w = st.slider("📐 图表大小", 480, 1280, 960, 20, key="plot_width")
-    st.caption("拖动滑块调整图表宽度（像素），比例自动保持；数据不变，只是视图缩放。")
+    w = st.slider(tr("📐 图表大小"), 480, 1280, 960, 20, key="plot_width")
+    st.caption(tr("拖动滑块调整图表宽度（像素），比例自动保持；数据不变，只是视图缩放。"))
     for fig in figs:
         _darkfig(fig)
         buf = io.BytesIO()
@@ -604,31 +609,31 @@ def _compare_section(scenario: str, params: dict) -> None:
     if not opts:
         return
     st.markdown("---")
-    st.subheader("📈 参数对比")
-    st.caption("改一个参数，看结果怎么变 —— 帮你理解每个参数的『手感』。")
+    st.subheader(tr("📈 参数对比"))
+    st.caption(tr("改一个参数，看结果怎么变 —— 帮你理解每个参数的『手感』。"))
     c1, c2, c3 = st.columns([2, 2, 1])
-    pname = c1.selectbox("对比参数", opts, format_func=lambda p: labels[p], key="cmp_param")
+    pname = c1.selectbox(tr("对比参数"), opts, format_func=lambda p: tr(labels[p]), key="cmp_param")
     cur = params.get(pname)
     if cur is None:
         cur = ENGINE_DEFAULTS[scenario].get(pname)
     if cur is None:
-        st.warning("该参数当前没有值，先在表单里设一个。")
+        st.warning(tr("该参数当前没有值，先在表单里设一个。"))
         return
     cur = float(cur)
-    lo = c2.number_input("范围下限", value=cur * 0.5 if cur > 0 else cur * 0.1,
+    lo = c2.number_input(tr("范围下限"), value=cur * 0.5 if cur > 0 else cur * 0.1,
                          key=f"cmp_lo_{pname}", format="%.3g")
-    hi = c3.number_input("范围上限", value=cur * 1.5,
+    hi = c3.number_input(tr("范围上限"), value=cur * 1.5,
                          key=f"cmp_hi_{pname}", format="%.3g")
-    n = st.slider("采样点数", 5, 60, 25, key="cmp_n")
+    n = st.slider(tr("采样点数"), 5, 60, 25, key="cmp_n")
     if lo >= hi:
-        st.warning("范围下限要小于上限。")
+        st.warning(tr("范围下限要小于上限。"))
         return
-    if not st.button("生成对比曲线", key="cmp_go", type="primary", use_container_width=True):
+    if not st.button(tr("生成对比曲线"), key="cmp_go", type="primary", use_container_width=True):
         return
     vals = [lo + (hi - lo) * i / (n - 1) for i in range(n)]
     rows = design.compare(ENGINES[scenario].solve, scenario, params, pname, vals)
     if len(rows) < 2:
-        st.warning("采样点太少或求解失败，把范围放宽些再试。")
+        st.warning(tr("采样点太少或求解失败，把范围放宽些再试。"))
         return
     fig = design.plot_compare(rows, scenario, pname, cur)
     if fig is not None:
@@ -636,8 +641,8 @@ def _compare_section(scenario: str, params: dict) -> None:
         st.pyplot(fig)
     spec = design.SENSITIVITY_SPEC[scenario]
     st.dataframe(
-        {"参数值": [f"{v:.3g}" for v, _ in rows],
-         f"{spec['label']}（{spec['unit']}）": [f"{y:.4g}" for _, y in rows]},
+        {tr("参数值"): [f"{v:.3g}" for v, _ in rows],
+         trf("{0}（{1}）", tr(spec['label']), spec['unit']): [f"{y:.4g}" for _, y in rows]},
         use_container_width=True, hide_index=True,
     )
 
@@ -654,11 +659,12 @@ def _ask_missing(scenario: str, given: dict, missing: list,
     labels = design.PARAM_LABELS.get(scenario, {})
     recommended = recommended or {}
     st.markdown("---")
-    st.markdown("#### 🤔 AI 还需要你补充几个参数")
+    st.markdown(tr("#### 🤔 AI 还需要你补充几个参数"))
     if given:
-        shown = "、".join(f"{labels.get(k, k)}={v if isinstance(v, str) else format(v, 'g')}"
-                          for k, v in given.items())
-        st.caption(f"已识别：{shown}")
+        shown = ("、" if i18n.LANG == "zh" else ", ").join(
+            f"{tr(labels.get(k, k))}={v if isinstance(v, str) else format(v, 'g')}"
+            for k, v in given.items())
+        st.caption(trf("已识别：{0}", shown))
     filled: dict = {}
     cols = st.columns(2)
     for i, p in enumerate(missing):
@@ -669,13 +675,13 @@ def _ask_missing(scenario: str, given: dict, missing: list,
                      else ENGINE_DEFAULTS[scenario].get(p) or lo, lo, hi)
         with cols[i % 2]:
             filled[p] = st.number_input(
-                labels.get(p, p), lo, hi, dft, format="%.3g",
+                tr(labels.get(p, p)), lo, hi, dft, format="%.3g",
                 key=f"ask_{scenario}_{p}",
             )
             if rec.get("reason"):
-                st.caption(f"✨ AI 推荐：{rec['reason']}（可直接用，也可改）")
-    st.caption("没提到的参数用工程默认值，结果区会标出哪些是默认（参数溯源）。")
-    if st.button("就用这些参数计算", type="primary", key="ask_go", use_container_width=True):
+                st.caption(trf("✨ AI 推荐：{0}（可直接用，也可改）", rec['reason']))
+    st.caption(tr("没提到的参数用工程默认值，结果区会标出哪些是默认（参数溯源）。"))
+    if st.button(tr("就用这些参数计算"), type="primary", key="ask_go", use_container_width=True):
         st.session_state.pop("pending_ask", None)   # 补齐完成，清除追问状态
         params = {**given, **filled}
         st.session_state["last_parse"] = {"scenario": scenario, "params": params}
@@ -691,7 +697,7 @@ def render_metrics(scenario: str, data: dict):
         row = items[i:i + 3]
         cols = st.columns(len(row))
         for col, (key, label, unit) in zip(cols, row):
-            col.metric(label, _fmt(data[key], unit))
+            col.metric(tr(label), _fmt(data[key], unit))
 
 
 def _show_sources(scenario: str, given: dict):
@@ -700,8 +706,9 @@ def _show_sources(scenario: str, given: dict):
     rows = []
     for k, v in {**defaults, **(given or {})}.items():
         val = "—" if v is None else f"{v:g}"
-        rows.append({"参数": k, "取值": val, "来源": "你给的" if k in given else "已用默认"})
-    with st.expander("参数与来源（溯源）", expanded=False):
+        rows.append({tr("参数"): k, tr("取值"): val,
+                     tr("来源"): tr("你给的") if k in given else tr("已用默认")})
+    with st.expander(tr("参数与来源（溯源）"), expanded=False):
         st.dataframe(rows, hide_index=True)
 
 
@@ -713,42 +720,43 @@ def render_result(scenario: str, params: dict, note: str = "",
     if scenario == "beam":
         _L, _a = params.get("L"), params.get("a")
         if _L and _a and _a > _L:
-            st.error(f"荷载位置 a={_a:g} m 超过了梁长 L={_L:g} m —— 集中力落在梁外了，"
-                     f"请把 a 改到 {0:.1f} ~ {_L:g} m 之间再算。")
+            st.error(trf("荷载位置 a={0:g} m 超过了梁长 L={1:g} m —— 集中力落在梁外了，", _a, _L)
+                     + trf("请把 a 改到 {0:.1f} ~ {1:g} m 之间再算。", _a, _L))
             return
     try:
         res = ENGINES[scenario].solve(params)
     except Exception as e:
-        st.error(f"计算失败：{e}")
+        st.error(trf("计算失败：{0}", e))
         return
     # 数值异常兜底（spec §5）：NaN/发散 → 提示参数不合理
     if any(isinstance(v, float) and (math.isnan(v) or math.isinf(v)) for v in res["data"].values()):
-        st.error("参数不合理，结果发散（NaN/Inf）——请调整参数后重算。")
+        st.error(tr("参数不合理，结果发散（NaN/Inf）——请调整参数后重算。"))
         return
     _plot_section(res["figures"])
-    st.subheader("关键数据")
+    st.subheader(tr("关键数据"))
     render_metrics(scenario, res["data"])
     # 结果可带走（下载）+ 进本机历史（跨模式回看/载入）；只存参数和标量结果，不碰 API key
     _save_history(scenario, params, res["data"])
     _export_buttons(scenario, params, res["data"])
 
     # ---- 设计辅助 · 参数敏感性（改变谁对结果影响最大）----
-    with st.expander("设计辅助 · 参数敏感性", expanded=True):
+    with st.expander(tr("设计辅助 · 参数敏感性"), expanded=True):
         full = {**ENGINE_DEFAULTS[scenario], **params}
-        with st.spinner("扫描各参数敏感性…"):
+        with st.spinner(tr("扫描各参数敏感性…")):
             rows = design.sensitivity(ENGINES[scenario].solve, scenario, full)
         if rows:
             fig = design.plot_sensitivity(rows, scenario)
             _darkfig(fig)
             st.pyplot(fig)
             top = rows[0]
-            verb = "增大" if top[1] > 0 else "减小"
+            verb = tr("增大") if top[1] > 0 else tr("减小")
             label = design.SENSITIVITY_SPEC[scenario]["label"]
-            st.caption(
-                f"💡 对「{label}」影响最大的是 **{top[0]}**：它 {verb} 10%，结果变化约 "
-                f"**{abs(top[1]):.0f}%** —— 想调结果，先动它最有效。")
+            st.caption(trf(
+                "💡 对「{0}」影响最大的是 **{1}**：它 {2} 10%，结果变化约 "
+                "**{3:.0f}%** —— 想调结果，先动它最有效。",
+                tr(label), top[0], verb, abs(top[1])))
         else:
-            st.caption("（当前参数下无法完成敏感性扫描）")
+            st.caption(tr("（当前参数下无法完成敏感性扫描）"))
 
     # ---- 设计辅助 · 超限自动建议（一键应用）----
     adv = design.advice(scenario, res["data"])
@@ -758,7 +766,7 @@ def render_result(scenario: str, params: dict, note: str = "",
         # 按钮未被点击，主流程不会再次进入本函数），返回值分支的 advice_apply 永远写
         # 不进 session_state；on_click 在点击当下就写入，重跑由主流程 applied 分支消费。
         if can_apply and adv.get("adjust"):
-            st.button(f"⚡ 一键应用：{adv['label']}",
+            st.button(trf("⚡ 一键应用：{0}", adv['label']),
                       key=f"apply_{scenario}", type="primary", use_container_width=True,
                       on_click=_apply_advice, args=(adv["adjust"],))
 
@@ -766,10 +774,10 @@ def render_result(scenario: str, params: dict, note: str = "",
     try:
         simple = {k: v for k, v in res["data"].items()
                   if isinstance(v, (int, float, str, bool)) or v is None}
-        with st.spinner("生成解读…"):
+        with st.spinner(tr("生成解读…")):
             text = llm.explain(scenario, simple, api_key=_ds_key() or None,
                                provider=_llm_provider())
-        st.subheader("AI 解读")
+        st.subheader(tr("AI 解读"))
         st.info(text)
     except Exception:
         pass
@@ -777,7 +785,7 @@ def render_result(scenario: str, params: dict, note: str = "",
     # 状态切换走 on_click 回调：render_result 在 radio/selectbox 实例化之后才执行，
     # 直接写 input_mode/scenario_select 会被 Streamlit 判为「widget 已实例化后修改」报错。
     if manualize:
-        st.button("✏️ 切到手动模式微调参数", key="manualize_btn", use_container_width=True,
+        st.button(tr("✏️ 切到手动模式微调参数"), key="manualize_btn", use_container_width=True,
                   on_click=_manualize, args=(scenario, params))
 
 
@@ -925,9 +933,9 @@ def _verification_section():
     展示默认参数下的对照结果（默认参数=各引擎 DEFAULT_PARAMS，见引擎模块）。
     """
     st.markdown("---")
-    with st.expander("🧪 数值可复核：每个数都对过 MATLAB / ASME", expanded=False):
-        st.caption("LLM 只负责「听懂中文、提取参数」，**从不参与计算**。所有数值由 scipy 求解器算出，"
-                   "默认参数下的结果与验证基准一致：")
+    with st.expander(tr("🧪 数值可复核：每个数都对过 MATLAB / ASME"), expanded=False):
+        st.caption(tr("LLM 只负责「听懂中文、提取参数」，**从不参与计算**。所有数值由 scipy 求解器算出，"
+                      "默认参数下的结果与验证基准一致："))
         bench = [
             ("单摆（动力学）", "周期 T ≈ 2.252 s（θ₀=120°，周期比 1.12 → 大角度变慢）",
              "MATLAB `simple_pendulum_cn.m` 一致"),
@@ -943,7 +951,10 @@ def _verification_section():
              "Darcy-Weisbach + Colebrook，层流段对解析解 0% 误差"),
         ]
         for name, val, src in bench:
-            st.markdown(f"- **{name}**：{val}　｜　{src}")
+            if i18n.LANG == "zh":
+                st.markdown(f"- **{tr(name)}**：{tr(val)}　｜　{tr(src)}")
+            else:
+                st.markdown(f"- **{tr(name)}**: {tr(val)} | {tr(src)}")
 
 
 # ---- 结果导出（评委可带走数据：完整 JSON + 表格 CSV）----
@@ -961,8 +972,8 @@ def _export_json(scenario: str, params: dict, data: dict) -> str:
               if k != "params" and (isinstance(v, (int, float, str, bool)) or v is None)}
     curves = {k: clean(data[k]) for k in ("t_arr", "T_center", "x") if data.get(k) is not None}
     payload = {
-        "app": "AI 工程仿真助手",
-        "scenario": SCENARIOS_REV.get(scenario, scenario),
+        "app": tr("AI 工程仿真助手"),
+        "scenario": tr(SCENARIOS_REV.get(scenario, scenario)),
         "params": {k: clean(v) for k, v in params.items()
                    if isinstance(v, (int, float)) and not isinstance(v, bool)},
         "results": scalar,
@@ -975,19 +986,19 @@ def _export_csv(scenario: str, params: dict, data: dict) -> str:
     """结果 → CSV：键值表（参数 + 结果标量），heat 再追加中心温度曲线长表。"""
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["项目", "值"])
-    w.writerow(["场景", SCENARIOS_REV.get(scenario, scenario)])
+    w.writerow([tr("项目"), tr("值")])
+    w.writerow([tr("场景"), tr(SCENARIOS_REV.get(scenario, scenario))])
     for k, v in sorted(params.items()):
         if isinstance(v, (int, float)) and not isinstance(v, bool):
-            w.writerow([f"参数·{k}", f"{v:g}"])
+            w.writerow([f"{tr('参数·')}{k}", f"{v:g}"])
     for k, v in data.items():
         if k == "params":
             continue
         if isinstance(v, (int, float, str, bool)) or v is None:
-            w.writerow([f"结果·{k}", _fmt(v, "")])
+            w.writerow([f"{tr('结果·')}{k}", _fmt(v, "")])
     if data.get("t_arr") is not None and data.get("T_center") is not None:
         w.writerow([])
-        w.writerow(["t (s)", "中心温度 (°C)"])
+        w.writerow([tr("t (s)"), tr("中心温度 (°C)")])
         for t, tc in zip(data["t_arr"], data["T_center"]):
             w.writerow([f"{t:.4g}", f"{tc:.4g}"])
     return buf.getvalue()
@@ -995,18 +1006,18 @@ def _export_csv(scenario: str, params: dict, data: dict) -> str:
 
 def _export_buttons(scenario: str, params: dict, data: dict) -> None:
     """关键数据下方的下载按钮区（JSON 完整 / CSV 表格）。"""
-    st.caption("📦 结果可以带走：")
+    st.caption(tr("📦 结果可以带走："))
     c1, c2 = st.columns(2)
     c1.download_button(
-        "导出 JSON（完整数据）", data=_export_json(scenario, params, data),
+        tr("导出 JSON（完整数据）"), data=_export_json(scenario, params, data),
         file_name=f"sim_{scenario}_results.json", mime="application/json",
         key=f"dl_json_{scenario}", use_container_width=True,
-        help="完整结果：标量 + 参数 + 曲线（heat 温度曲线），给评审 / 归档用。")
+        help=tr("完整结果：标量 + 参数 + 曲线（heat 温度曲线），给评审 / 归档用。"))
     c2.download_button(
-        "导出 CSV（表格）", data=_export_csv(scenario, params, data),
+        tr("导出 CSV（表格）"), data=_export_csv(scenario, params, data),
         file_name=f"sim_{scenario}_results.csv", mime="text/csv",
         key=f"dl_csv_{scenario}", use_container_width=True,
-        help="表格视图：参数与结果的键值表，Excel / 表格软件可直接打开。")
+        help=tr("表格视图：参数与结果的键值表，Excel / 表格软件可直接打开。"))
 
 
 # ---- 计算历史（本机持久化：算过的能一键载回表单，跨模式记忆）----
@@ -1081,24 +1092,24 @@ def _history_section() -> None:
     if not hist:
         return
     st.markdown("---")
-    with st.expander(f"📚 计算历史（本机 {len(hist)} 条）", expanded=False):
-        st.caption("刚才算过的都在这里，一键把参数带回来微调，不用重新打字。")
+    with st.expander(trf("📚 计算历史（本机 {0} 条）", len(hist)), expanded=False):
+        st.caption(tr("刚才算过的都在这里，一键把参数带回来微调，不用重新打字。"))
         for i, e in enumerate(hist[:8]):
             res_summary = " · ".join(f"{k}={v}" for k, v in list(e.get("results", {}).items())[:2])
             c1, c2, c3 = st.columns([1, 4, 1])
-            c1.markdown(f"**{e.get('label', e.get('scenario', ''))}**")
+            c1.markdown(f"**{tr(e.get('label', e.get('scenario', '')))}**")
             c2.markdown(f"`{res_summary}`")
-            c3.button("载入参数", key=f"hist_load_{i}", use_container_width=True,
+            c3.button(tr("载入参数"), key=f"hist_load_{i}", use_container_width=True,
                       on_click=_load_history_params, args=(e,))
 
 
 # ---- 品牌 header ----
-st.markdown("""
+st.markdown(f"""
 <div class="brand-header">
   <div class="brand-logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03Z"/></svg></div>
   <div>
-    <div class="brand-name">AI 工程仿真助手</div>
-    <div class="brand-sub">一句话描述工程问题，AI 解析参数，数值真算，大白话解读。</div>
+    <div class="brand-name">{tr("AI 工程仿真助手")}</div>
+    <div class="brand-sub">{tr("一句话描述工程问题，AI 解析参数，数值真算，大白话解读。")}</div>
   </div>
 </div>
 <div class="accent-line"></div>
@@ -1109,63 +1120,71 @@ st.markdown("""
 # 本地开发 secrets.toml 注入环境变量，留空即用；线上评审填自己的 key。
 # password 输入只读不回显，状态 caption 随 rerun 实时刷新。
 with st.sidebar:
-    st.markdown("##### ⚙️ API 设置")
+    # 语言开关（默认英文——提交/演示态；中文为日常使用态）。内部值 "en"/"zh" 存 session_state，
+    # format_func 只改显示，顶部 set_lang 每次 rerun 从 session_state 读当前语言。
+    st.selectbox(tr("语言 / Language"), ["en", "zh"],
+                 index=0 if i18n.LANG == "en" else 1,
+                 format_func=lambda c: tr("英语（提交/演示）") if c == "en" else tr("中文"),
+                 key="lang")
+    st.markdown("##### " + tr("⚙️ API 设置"))
     _prov = st.selectbox(
-        "LLM 服务商", list(llm.PROVIDERS),
+        tr("LLM 服务商"), list(llm.PROVIDERS),
         index=list(llm.PROVIDERS).index(_llm_provider()) if _llm_provider() in llm.PROVIDERS else 0,
-        format_func=lambda p: llm.PROVIDERS[p]["label"],
+        format_func=lambda p: tr(llm.PROVIDERS[p]["label"]),
         key="llm_provider",
         on_change=_save_local_keys,
-        help="AI 解析 + 解读用的模型服务商，全部走 OpenAI 兼容接口。",
+        help=tr("AI 解析 + 解读用的模型服务商，全部走 OpenAI 兼容接口。"),
     )
     _pcfg = llm.PROVIDERS.get(_prov, llm.PROVIDERS["deepseek"])
     st.text_input(
-        f"{_pcfg['label']} API Key", type="password", key=f"api_key_{_prov}",
-        placeholder=f"{_pcfg['env']}（AI 解析需要）",
+        f"{tr(_pcfg['label'])} API Key", type="password", key=f"api_key_{_prov}",
+        placeholder=trf("{0}（AI 解析需要）", _pcfg['env']),
         on_change=_save_local_keys,
-        help=f"{_pcfg.get('hint', '')} 自然语言解析 + AI 解读需要。本地留空自动用内置 secrets；线上演示请填自己的 key，否则只能用「手动输入」。",
+        help=f"{tr(_pcfg.get('hint', ''))} "
+             f"{tr('自然语言解析 + AI 解读需要。本地留空自动用内置 secrets；线上演示请填自己的 key，否则只能用「手动输入」。')}",
     )
     st.text_input(
-        "SerpApi Key", type="password", key="api_key_serp",
-        placeholder="可选（查钢梁参数用）",
+        tr("SerpApi Key"), type="password", key="api_key_serp",
+        placeholder=tr("可选（查钢梁参数用）"),
         on_change=_save_local_keys,
-        help="仅「查钢梁典型参数」按钮需要，可不填。",
+        help=tr("仅「查钢梁典型参数」按钮需要，可不填。"),
     )
     st.caption(
-        (f"✅ {_pcfg['label']} 已配置" if _llm_key(_prov) else f"⚠️ {_pcfg['label']} 未配置——AI 解析/解读不可用")
+        (trf("✅ {0} 已配置", tr(_pcfg['label'])) if _llm_key(_prov)
+         else trf("⚠️ {0} 未配置——AI 解析/解读不可用", tr(_pcfg['label'])))
         + " · "
-        + ("✅ SerpApi 已配置" if _serp_key() else "SerpApi 未配置（可选）")
+        + (tr("✅ SerpApi 已配置") if _serp_key() else tr("SerpApi 未配置（可选）"))
     )
-    st.caption("💾 填过的 key 会记住到本机，下次打开自动加载（不随网页关闭丢失）。")
+    st.caption(tr("💾 填过的 key 会记住到本机，下次打开自动加载（不随网页关闭丢失）。"))
 
-mode = st.radio("输入方式", ["自然语言", "手动输入"], horizontal=True,
-                label_visibility="collapsed", key="input_mode")
+mode = st.radio(tr("输入方式"), ["自然语言", "手动输入"], horizontal=True,
+                label_visibility="collapsed", key="input_mode", format_func=tr)
 
 if mode == "自然语言":
     st.text_area(
-        "描述你的工程问题", key="q_text", height=110,
-        placeholder="例：一根4米长的简支钢梁，距左端1.5米处承受10kN集中力，最大挠度多少？",
+        tr("描述你的工程问题"), key="q_text", height=110,
+        placeholder=tr("例：一根4米长的简支钢梁，距左端1.5米处承受10kN集中力，最大挠度多少？"),
     )
     _btn = st.columns([5, 1, 2])
     _ds_ready = bool(_ds_key())
-    if _btn[2].button("解析并计算", type="primary", use_container_width=True,
+    if _btn[2].button(tr("解析并计算"), type="primary", use_container_width=True,
                       disabled=not _ds_ready, key="parse_go"):
         st.session_state.pop("pending_ask", None)   # 重新解析，作废旧的追问
         st.session_state.pop("ask_result", None)    # 旧的结果卡也让位给新解析
         parsed, err = None, None
-        with st.status("解析工程问题…", expanded=True) as s:
+        with st.status(tr("解析工程问题…"), expanded=True) as s:
             try:
-                s.update(label="调用 AI 识别场景与参数…", state="running")
+                s.update(label=tr("调用 AI 识别场景与参数…"), state="running")
                 parsed = llm.parse_query(st.session_state.get("q_text", ""),
                                          api_key=_ds_key() or None,
                                          provider=_llm_provider())
                 name = SCENARIOS_REV.get(parsed["scenario"], parsed["scenario"])
                 if parsed.get("params"):
-                    st.write("AI 识别到的参数：", {k: v for k, v in parsed["params"].items()})
-                s.update(label=f"识别到场景：{name} ✓", state="complete")
+                    st.write(tr("AI 识别到的参数："), {k: v for k, v in parsed["params"].items()})
+                s.update(label=trf("识别到场景：{0} ✓", tr(name)), state="complete")
             except ValueError as e:
                 err = str(e)
-                s.update(label=f"解析失败：{err}", state="error", expanded=False)
+                s.update(label=trf("解析失败：{0}", err), state="error", expanded=False)
         if parsed:
             scenario = parsed["scenario"]
             given = parsed.get("params", {})
@@ -1186,9 +1205,10 @@ if mode == "自然语言":
                 }
                 st.session_state["ask_result"] = {"scenario": scenario, "params": given}
         else:
-            st.warning(f"{err} —— 请改用手动输入。")
+            st.warning(f"{err} — {tr('请改用手动输入。')}")
     elif not _ds_ready:
-        st.warning(f"未配置 {_pcfg['label']} API Key —— AI 解析暂不可用。请在左侧「API 设置」填你的 key，或切到「手动输入」直接算。")
+        st.warning(trf("未配置 {0} API Key —— AI 解析暂不可用。请在左侧「API 设置」填你的 key，或切到「手动输入」直接算。",
+                       tr(_pcfg['label'])))
 
     # rerun 恢复追问表单（用户填值触发 rerun 时解析不在路径上，靠 session_state 恢复）
     _pending = st.session_state.get("pending_ask")
@@ -1201,7 +1221,7 @@ if mode == "自然语言":
         render_result(_ask_res["scenario"], _ask_res["params"], manualize=True)
 
     st.markdown('<div style="height:.5rem"></div>', unsafe_allow_html=True)
-    st.caption("想快速试？点一个直接填入：")
+    st.caption(tr("想快速试？点一个直接填入："))
     EXAMPLES = [
         ("动力学 · 单摆", "摆长1米的单摆，从120度松手，看它的周期和能量"),
         ("结构 · 钢梁", "一根4米简支钢梁，距左端1.5米处受10kN集中力，最大挠度多少？"),
@@ -1213,13 +1233,14 @@ if mode == "自然语言":
     for i in range(0, len(EXAMPLES), 3):
         for col, (sc, q) in zip(st.columns(3), EXAMPLES[i:i + 3]):
             with col:
-                st.button(sc, key=f"ex_{sc}", on_click=_fill_example, args=(q,), use_container_width=True)
+                st.button(tr(sc), key=f"ex_{sc}", on_click=_fill_example, args=(q,), use_container_width=True)
 
     _history_section()
     _verification_section()
 
 else:
-    scenario_label = st.selectbox("场景", list(SCENARIOS), key="scenario_select")
+    scenario_label = st.selectbox(tr("场景"), list(SCENARIOS), key="scenario_select",
+                                  format_func=tr)
     scenario = SCENARIOS[scenario_label]
     # 上次 AI 解析/计算过的参数（跨模式记忆，表单用它做默认值；缺省回落到引擎默认值，
     # 避免首次打开手动模式时所有输入框都落在下限，得到一个离谱的边界工况）
@@ -1228,69 +1249,69 @@ else:
     params = {}
     if scenario == "pendulum":
         c1, c2, c3 = st.columns(3)
-        params["th0_deg"] = c1.number_input("初始角度 θ₀ (°)", 0.0, 180.0, _clamp(_last.get("th0_deg"), 0.0, 180.0), key="pend_th0")
-        params["w0"] = c2.number_input("初始角速度 ω₀ (rad/s)", 0.0, 20.0, _clamp(_last.get("w0"), 0.0, 20.0), key="pend_w0")
-        params["t_end"] = c3.number_input("时长 (s)", 1.0, 60.0, _clamp(_last.get("t_end"), 1.0, 60.0), key="pend_t_end")
+        params["th0_deg"] = c1.number_input(tr("初始角度 θ₀ (°)"), 0.0, 180.0, _clamp(_last.get("th0_deg"), 0.0, 180.0), key="pend_th0")
+        params["w0"] = c2.number_input(tr("初始角速度 ω₀ (rad/s)"), 0.0, 20.0, _clamp(_last.get("w0"), 0.0, 20.0), key="pend_w0")
+        params["t_end"] = c3.number_input(tr("时长 (s)"), 1.0, 60.0, _clamp(_last.get("t_end"), 1.0, 60.0), key="pend_t_end")
     elif scenario == "heat":
         c1, c2, c3 = st.columns(3)
-        params["L"] = c1.number_input("钢件半宽 (m)", 0.01, 1.0, _clamp(_last.get("L"), 0.01, 1.0), format="%.3f", key="heat_L")
-        params["T0"] = c2.number_input("初始温度 (°C)", 100.0, 1500.0, _clamp(_last.get("T0"), 100.0, 1500.0), key="heat_T0")
-        params["T_wall"] = c3.number_input("介质温度 (°C)", 0.0, 500.0, _clamp(_last.get("T_wall"), 0.0, 500.0), key="heat_T_wall")
-        params["T_target"] = st.number_input("目标温度 (°C)", 0.0, 1500.0, _clamp(_last.get("T_target"), 0.0, 1500.0), key="heat_T_target")
+        params["L"] = c1.number_input(tr("钢件半宽 (m)"), 0.01, 1.0, _clamp(_last.get("L"), 0.01, 1.0), format="%.3f", key="heat_L")
+        params["T0"] = c2.number_input(tr("初始温度 (°C)"), 100.0, 1500.0, _clamp(_last.get("T0"), 100.0, 1500.0), key="heat_T0")
+        params["T_wall"] = c3.number_input(tr("介质温度 (°C)"), 0.0, 500.0, _clamp(_last.get("T_wall"), 0.0, 500.0), key="heat_T_wall")
+        params["T_target"] = st.number_input(tr("目标温度 (°C)"), 0.0, 1500.0, _clamp(_last.get("T_target"), 0.0, 1500.0), key="heat_T_target")
     elif scenario == "beam":
         c1, c2, c3 = st.columns(3)
-        params["L"] = c1.number_input("梁长 (m)", 0.1, 20.0, _clamp(_last.get("L"), 0.1, 20.0), key="beam_L")
-        params["P"] = c2.number_input("集中荷载 (N)", 100.0, 1e6, _clamp(_last.get("P"), 100.0, 1e6), format="%.0f", key="beam_P")
-        params["a"] = c3.number_input("荷载距左端 (m)", 0.1, 19.9, _clamp(_last.get("a"), 0.1, 19.9), key="beam_a")
+        params["L"] = c1.number_input(tr("梁长 (m)"), 0.1, 20.0, _clamp(_last.get("L"), 0.1, 20.0), key="beam_L")
+        params["P"] = c2.number_input(tr("集中荷载 (N)"), 100.0, 1e6, _clamp(_last.get("P"), 100.0, 1e6), format="%.0f", key="beam_P")
+        params["a"] = c3.number_input(tr("荷载距左端 (m)"), 0.1, 19.9, _clamp(_last.get("a"), 0.1, 19.9), key="beam_a")
         c4, c5 = st.columns(2)
-        params["E"] = c4.number_input("弹性模量 E (Pa)", 1e9, 1e12, _clamp(_last.get("E"), 1e9, 1e12),
+        params["E"] = c4.number_input(tr("弹性模量 E (Pa)"), 1e9, 1e12, _clamp(_last.get("E"), 1e9, 1e12),
                                       format="%.3g", key="beam_E")
-        params["I"] = c5.number_input("惯性矩 I (m4)", 1e-8, 1.0, _clamp(_last.get("I"), 1e-8, 1.0),
+        params["I"] = c5.number_input(tr("惯性矩 I (m4)"), 1e-8, 1.0, _clamp(_last.get("I"), 1e-8, 1.0),
                                       format="%.3g", key="beam_I")
         # 填典型参数走 on_click（点击当下写 session_state，rerun 后 number_input 真读新值）；
         # 在线搜索仅作参考，不依赖它生效。
-        if st.button("SerpApi 查钢梁典型参数", key="serp_btn", on_click=_set_steel_defaults):
+        if st.button(tr("SerpApi 查钢梁典型参数"), key="serp_btn", on_click=_set_steel_defaults):
             if _serp_key():
                 try:
                     from agent import serpapi
                     info = serpapi.search("standard steel I-beam elastic modulus moment of inertia",
                                           api_key=_serp_key())
-                    st.write("搜索结果参考：", info[:2])
+                    st.write(tr("搜索结果参考："), info[:2])
                 except Exception as e:
-                    st.error(f"SerpApi 查询失败：{e}")
+                    st.error(trf("SerpApi 查询失败：{0}", e))
             else:
-                st.info("未配置 SerpApi Key，已直接填入典型钢梁参数（E=200 GPa、I=5e-4 m⁴），点「计算」生效。")
-            st.success("已填入典型钢梁参数 E=200 GPa、I=5e-4 m⁴（可在上方输入框修改）。")
+                st.info(tr("未配置 SerpApi Key，已直接填入典型钢梁参数（E=200 GPa、I=5e-4 m⁴），点「计算」生效。"))
+            st.success(tr("已填入典型钢梁参数 E=200 GPa、I=5e-4 m⁴（可在上方输入框修改）。"))
     elif scenario == "vessel":
         c1, c2, c3 = st.columns(3)
-        params["P"] = c1.number_input("内压 (Pa)", 1e4, 1e8, _clamp(_last.get("P"), 1e4, 1e8), format="%.3g", key="ves_P")
-        params["D"] = c2.number_input("内径 (m)", 0.1, 10.0, _clamp(_last.get("D"), 0.1, 10.0), key="ves_D")
-        params["sigma_allow"] = c3.number_input("许用应力 (Pa)", 1e7, 1e9, _clamp(_last.get("sigma_allow"), 1e7, 1e9), format="%.3g", key="ves_sigma")
+        params["P"] = c1.number_input(tr("内压 (Pa)"), 1e4, 1e8, _clamp(_last.get("P"), 1e4, 1e8), format="%.3g", key="ves_P")
+        params["D"] = c2.number_input(tr("内径 (m)"), 0.1, 10.0, _clamp(_last.get("D"), 0.1, 10.0), key="ves_D")
+        params["sigma_allow"] = c3.number_input(tr("许用应力 (Pa)"), 1e7, 1e9, _clamp(_last.get("sigma_allow"), 1e7, 1e9), format="%.3g", key="ves_sigma")
         # 校核模式：给「给定壁厚」→ 算实际应力是否超许用（补全 safe/advice 链路）
         adv_t = st.session_state.get("advice_apply", {}).get("t_given")
-        do_check = st.checkbox("校核给定壁厚", value=bool(adv_t or _last.get("t_given")))
+        do_check = st.checkbox(tr("校核给定壁厚"), value=bool(adv_t or _last.get("t_given")))
         if do_check:
             params["t_given"] = st.number_input(
-                "给定壁厚 t (m)", 0.001, 0.5, _clamp(adv_t or _last.get("t_given") or 0.006, 0.001, 0.5),
+                tr("给定壁厚 t (m)"), 0.001, 0.5, _clamp(adv_t or _last.get("t_given") or 0.006, 0.001, 0.5),
                 format="%.4f", key="ves_t_given")
     elif scenario == "rc_circuit":
         c1, c2, c3 = st.columns(3)
-        params["R"] = c1.number_input("电阻 R (Ω)", 10.0, 1e6, _clamp(_last.get("R"), 10.0, 1e6),
+        params["R"] = c1.number_input(tr("电阻 R (Ω)"), 10.0, 1e6, _clamp(_last.get("R"), 10.0, 1e6),
                                       format="%.3g", key="rc_R")
-        params["C"] = c2.number_input("电容 C (F)", 1e-9, 1e-2, _clamp(_last.get("C"), 1e-9, 1e-2),
+        params["C"] = c2.number_input(tr("电容 C (F)"), 1e-9, 1e-2, _clamp(_last.get("C"), 1e-9, 1e-2),
                                       format="%.3g", key="rc_C")
-        params["V_s"] = c3.number_input("源电压 Vs (V)", 1.0, 1000.0, _clamp(_last.get("V_s"), 1.0, 1000.0),
+        params["V_s"] = c3.number_input(tr("源电压 Vs (V)"), 1.0, 1000.0, _clamp(_last.get("V_s"), 1.0, 1000.0),
                                         format="%.3g", key="rc_Vs")
-        params["charge_percent"] = st.number_input("充电目标 (%)", 1.0, 99.9,
+        params["charge_percent"] = st.number_input(tr("充电目标 (%)"), 1.0, 99.9,
                                                    _clamp(_last.get("charge_percent"), 1.0, 99.9),
                                                    format="%.3g", key="rc_percent")
     elif scenario == "pipe_flow":
         c1, c2, c3 = st.columns(3)
-        params["Q"] = c1.number_input("流量 Q (m³/s)", 1e-5, 1.0, _clamp(_last.get("Q"), 1e-5, 1.0),
+        params["Q"] = c1.number_input(tr("流量 Q (m³/s)"), 1e-5, 1.0, _clamp(_last.get("Q"), 1e-5, 1.0),
                                       format="%.4g", key="pipe_Q")
-        params["D"] = c2.number_input("管内径 D (m)", 0.005, 1.0, _clamp(_last.get("D"), 0.005, 1.0),
+        params["D"] = c2.number_input(tr("管内径 D (m)"), 0.005, 1.0, _clamp(_last.get("D"), 0.005, 1.0),
                                       format="%.4g", key="pipe_D")
-        params["L"] = c3.number_input("管长 L (m)", 1.0, 10000.0, _clamp(_last.get("L"), 1.0, 10000.0),
+        params["L"] = c3.number_input(tr("管长 L (m)"), 1.0, 10000.0, _clamp(_last.get("L"), 1.0, 10000.0),
                                       format="%.4g", key="pipe_L")
     _calc = st.columns([5, 1, 2])
     # 「一键应用建议」：advice 按钮把调整参数存入 session_state 并 rerun，这里消费后
@@ -1308,10 +1329,11 @@ else:
         st.rerun()
     if st.session_state.pop("auto_run", False):
         la = st.session_state.pop("last_applied", {}) or {}
-        st.success("已应用设计建议：" + "，".join(f"{k} = {v:.3g}" for k, v in la.items())
-                   + "，结果已重算（可在上方输入框继续微调）。")
+        st.success(tr("已应用设计建议：")
+                   + (", " if i18n.LANG == "en" else "，").join(f"{k} = {v:.3g}" for k, v in la.items())
+                   + tr("，结果已重算（可在上方输入框继续微调）。"))
         render_result(scenario, params, can_apply=True)
-    elif _calc[2].button("计算", type="primary", use_container_width=True, key="calc_go"):
+    elif _calc[2].button(tr("计算"), type="primary", use_container_width=True, key="calc_go"):
         render_result(scenario, params, can_apply=True)
     _compare_section(scenario, params)
     _history_section()

@@ -12,6 +12,8 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from i18n import tr, trf
+
 # 每场景敏感性规格：参与扫描的物理参数（白名单，排除数值离散/仿真控制键
 # 如 heat 的 N/r/tmax —— 它们不反映真实设计决策）+ 目标输出键 + 输出中文名。
 SENSITIVITY_SPEC = {
@@ -106,13 +108,13 @@ def plot_compare(rows: list, scenario: str, param_name: str, current_value: floa
     if current_value is not None and min(xs) <= current_value <= max(xs):
         cy = float(np.interp(current_value, xs, ys))
         ax.plot([current_value], [cy], "o", ms=11, mfc="#E5484D", mec="white", mew=1.5,
-                label=f"当前值 = {current_value:.3g}")
+                label=trf("当前值 = {0:.3g}", current_value))
         ax.legend(loc="best", frameon=False)
     if min(xs) > 0 and max(xs) / min(xs) > 100:
         ax.set_xscale("log")
-    ax.set_xlabel(label, fontsize=10)
-    ax.set_ylabel(f"{spec['label']}（{spec['unit']}）", fontsize=10)
-    ax.set_title(f"参数对比 | {label} 变化 → {spec['label']}", fontsize=11)
+    ax.set_xlabel(tr(label), fontsize=10)
+    ax.set_ylabel(trf("{0}（{1}）", tr(spec['label']), spec['unit']), fontsize=10)
+    ax.set_title(trf("参数对比 | {0} 变化 → {1}", tr(label), tr(spec['label'])), fontsize=11)
     ax.tick_params(colors="#2A3550")
     ax.grid(True, color="#F0F0EB", linewidth=0.6)
     fig.tight_layout()
@@ -178,9 +180,9 @@ def plot_sensitivity(rows: list, scenario: str) -> plt.Figure | None:
                 ha="left" if p >= 0 else "right", color="#DCE6FF", fontsize=9)
     ax.axvline(0, color="#2A3550", lw=1)
     ax.set_yticks(pos)
-    ax.set_yticklabels(names, fontsize=10)
-    ax.set_xlabel(f"该参数 ±10% 时「{spec['label']}」的变化 (%)", fontsize=9)
-    ax.set_title(f"参数敏感性 | 改变谁影响最大？（{spec['label']}）", fontsize=11)
+    ax.set_yticklabels([tr(n) for n in names], fontsize=10)
+    ax.set_xlabel(trf("该参数 ±10% 时「{0}」的变化 (%)", tr(spec['label'])), fontsize=9)
+    ax.set_title(trf("参数敏感性 | 改变谁影响最大？（{0}）", tr(spec['label'])), fontsize=11)
     ax.tick_params(colors="#9FB4FF")
     for spine in ax.spines.values():
         spine.set_edgecolor("#2A3550")
@@ -206,12 +208,12 @@ def advice(scenario: str, data: dict) -> dict | None:
             need = I * v_max / v_allow * 1.25   # v ∝ 1/I，反推所需 I + 25% 裕量
             return {
                 "message": (
-                    f"最大挠度 {data['v_max_mm']:.1f} mm 超过许用 {v_allow * 1000:.1f} mm"
-                    f"（L/360）。挠度与截面惯性矩成反比：把 I 从 {I:.3g} m⁴"
-                    f" 加大到约 {need:.3g} m⁴（{need / I:.1f}×，留 25% 裕量），即可回到限内。"
+                    trf("最大挠度 {0:.1f} mm 超过许用 {1:.1f} mm", data['v_max_mm'], v_allow * 1000)
+                    + trf("（L/360）。挠度与截面惯性矩成反比：把 I 从 {2:.3g} m⁴ 加大到约 {3:.3g} m⁴（{4:.1f}×，留 25% 裕量），即可回到限内。",
+                          data['v_max_mm'], v_allow * 1000, I, need, need / I)
                 ),
                 "adjust": {"I": float(need)},
-                "label": f"I → {need:.3g} m⁴ 并重算",
+                "label": trf("I → {0:.3g} m⁴ 并重算", need),
             }
         return None
 
@@ -219,12 +221,10 @@ def advice(scenario: str, data: dict) -> dict | None:
         if data.get("t_center_target") is None:
             L = params.get("L", 0.1)
             return {
-                "message": (
-                    "仿真时长内中心温度未降到目标。冷却时间约与半宽 L² 成正比、"
-                    "随介质温度 T_wall 升高而缩短 —— 减小 L 或提高 T_wall 都能显著加快。"
-                ),
+                "message": tr("仿真时长内中心温度未降到目标。冷却时间约与半宽 L² 成正比、"
+                              "随介质温度 T_wall 升高而缩短 —— 减小 L 或提高 T_wall 都能显著加快。"),
                 "adjust": {"L": float(L * 0.8)},
-                "label": f"L → {L * 0.8:.3g} m 并重算",
+                "label": trf("L → {0:.3g} m 并重算", L * 0.8),
             }
         return None
 
@@ -236,15 +236,11 @@ def advice(scenario: str, data: dict) -> dict | None:
                 t_req = data["t_req"]
                 need = t_req * 1.25
                 return {
-                    "message": (
-                        f"给定壁厚 {t_given * 1000:.1f} mm 下实际应力 "
-                        f"{data['sigma_actual'] / 1e6:.0f} MPa，超过许用 "
-                        f"{data['sigma_allow'] / 1e6:.0f} MPa。ASME 所需壁厚 "
-                        f"{data['t_req_mm']:.1f} mm —— 建议加厚到 {need * 1000:.1f} mm"
-                        f"（留 25% 裕量）即安全。"
-                    ),
+                    "message": trf("给定壁厚 {0:.1f} mm 下实际应力 {1:.0f} MPa，超过许用 {2:.0f} MPa。ASME 所需壁厚 {3:.1f} mm —— 建议加厚到 {4:.1f} mm（留 25% 裕量）即安全。",
+                                   t_given * 1000, data['sigma_actual'] / 1e6,
+                                   data['sigma_allow'] / 1e6, data['t_req_mm'], need * 1000),
                     "adjust": {"t_given": float(need)},
-                    "label": f"t → {need * 1000:.1f} mm 并重算",
+                    "label": trf("t → {0:.1f} mm 并重算", need * 1000),
                 }
         return None
 
@@ -256,25 +252,18 @@ def advice(scenario: str, data: dict) -> dict | None:
             if v > 3.0:
                 need = D * 1.25
                 return {
-                    "message": (
-                        f"流速 {v:.1f} m/s 超过水的经济流速上限 3 m/s —— 流速快、磨损大，"
-                        f"且压降随流量平方上涨。流速与管径平方成反比：把管径从 "
-                        f"{D * 1000:.0f} mm 加大到约 {need * 1000:.0f} mm（+25%），"
-                        f"流速可压回 ~{v / 1.25 ** 2:.1f} m/s。"
-                    ),
+                    "message": trf("流速 {0:.1f} m/s 超过水的经济流速上限 3 m/s —— 流速快、磨损大，且压降随流量平方上涨。流速与管径平方成反比：把管径从 {1:.0f} mm 加大到约 {2:.0f} mm（+25%），流速可压回 ~{3:.1f} m/s。",
+                                   v, D * 1000, need * 1000, v / 1.25 ** 2),
                     "adjust": {"D": float(need)},
-                    "label": f"D → {need * 1000:.0f} mm 并重算",
+                    "label": trf("D → {0:.0f} mm 并重算", need * 1000),
                 }
             if v < 0.5:
                 need = D * 0.75
                 return {
-                    "message": (
-                        f"流速 {v:.2f} m/s 低于经济流速下限 0.5 m/s —— 管径偏大、流速偏慢，"
-                        f"杂质易沉积。建议把管径收到约 {need * 1000:.0f} mm（-25%），"
-                        f"流速提到 ~{v / 0.75 ** 2:.2f} m/s。"
-                    ),
+                    "message": trf("流速 {0:.2f} m/s 低于经济流速下限 0.5 m/s —— 管径偏大、流速偏慢，杂质易沉积。建议把管径收到约 {1:.0f} mm（-25%），流速提到 ~{2:.2f} m/s。",
+                                   v, need * 1000, v / 0.75 ** 2),
                     "adjust": {"D": float(need)},
-                    "label": f"D → {need * 1000:.0f} mm 并重算",
+                    "label": trf("D → {0:.0f} mm 并重算", need * 1000),
                 }
         return None
 

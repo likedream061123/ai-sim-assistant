@@ -9,6 +9,8 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from i18n import tr, trf
+
 DEFAULT_PARAMS = {
     "P": 1e6,             # 内压 [Pa]
     "D": 1.0,             # 内径 [m]
@@ -37,8 +39,8 @@ def solve_vessel(params: dict | None = None, plot: bool = True) -> dict:
         fig = plt.figure(figsize=(6, 4))
         plt.plot(P_arr / 1e6, t_arr * 1000, "b-", lw=1.8)
         plt.plot(P / 1e6, t_req * 1000, "ro", ms=8, mfc="r")
-        plt.xlabel("内压 P (MPa)"); plt.ylabel("所需壁厚 t (mm)")
-        plt.title(f"薄壁圆筒壁厚 | 当前 P={P/1e6:.2f} MPa → t={t_req*1000:.2f} mm")
+        plt.xlabel(tr("内压 P (MPa)")); plt.ylabel(tr("所需壁厚 t (mm)"))
+        plt.title(trf("薄壁圆筒壁厚 | 当前 P={0:.2f} MPa → t={1:.2f} mm", P / 1e6, t_req * 1000))
         plt.grid()
         figs.append(fig)
 

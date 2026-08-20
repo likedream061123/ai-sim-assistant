@@ -11,6 +11,8 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from i18n import tr, trf
+
 DEFAULT_PARAMS = {
     "L": 0.1,          # 钢件半宽/半径 [m]（对称模型取半）
     "T0": 800.0,       # 初始温度 [°C]
@@ -74,15 +76,15 @@ def solve_heat(params: dict | None = None, plot: bool = True) -> dict:
         fig1 = plt.figure(figsize=(6, 4))
         for k in range(len(U_snap)):
             plt.plot(x, U_snap[k], label=f"t={t_snap[k]:.0f}s")
-        plt.xlabel("x (m, 0=中心)"); plt.ylabel("T (°C)")
-        plt.title("钢件冷却：温度分布快照"); plt.legend(); plt.grid()
+        plt.xlabel(tr("x (m, 0=中心)")); plt.ylabel(tr("T (°C)"))
+        plt.title(tr("钢件冷却：温度分布快照")); plt.legend(); plt.grid()
         figs.append(fig1)
 
         fig2 = plt.figure(figsize=(6, 4))
         plt.plot(t_arr, T_center, "b-", lw=1.8)
         plt.axhline(Tt, color="r", ls="--", lw=1, label=f"T_target={Tt:.0f}°C")
-        plt.xlabel("t (s)"); plt.ylabel("中心温度 (°C)")
-        plt.title("钢件中心冷却曲线"); plt.legend(); plt.grid()
+        plt.xlabel(tr("t (s)")); plt.ylabel(tr("中心温度 (°C)"))
+        plt.title(tr("钢件中心冷却曲线")); plt.legend(); plt.grid()
         figs.append(fig2)
 
     return {

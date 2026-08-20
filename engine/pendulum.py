@@ -20,6 +20,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 
+from i18n import tr, trf
+
 # 默认物理参数（与 MATLAB 版一致）
 DEFAULT_PARAMS: dict = {
     "m": 1.0,     # 摆锤质量 [kg]
@@ -156,16 +158,16 @@ def plot_pendulum(result: dict) -> list:
     E = result["energy"]
     fig1 = plt.figure(figsize=(6, 4))
     plt.plot(t, th, lw=1.5)
-    plt.xlabel("t (s)"); plt.ylabel("θ (deg)"); plt.title("摆角 - 时间"); plt.grid()
+    plt.xlabel(tr("t (s)")); plt.ylabel(tr("θ (deg)")); plt.title(tr("摆角 - 时间")); plt.grid()
     fig2 = plt.figure(figsize=(6, 4))
     plt.plot(t, w, lw=1.5)
-    plt.xlabel("t (s)"); plt.ylabel("ω (rad/s)"); plt.title("角速度 - 时间"); plt.grid()
+    plt.xlabel(tr("t (s)")); plt.ylabel(tr("ω (rad/s)")); plt.title(tr("角速度 - 时间")); plt.grid()
     fig3 = plt.figure(figsize=(6, 4))
     plt.plot(th, w, lw=1.2)
-    plt.xlabel("θ (deg)"); plt.ylabel("ω (rad/s)"); plt.title("相平面"); plt.grid()
+    plt.xlabel(tr("θ (deg)")); plt.ylabel(tr("ω (rad/s)")); plt.title(tr("相平面")); plt.grid()
     fig4 = plt.figure(figsize=(6, 4))
     plt.plot(t, E, lw=1.5)
-    plt.xlabel("t (s)"); plt.ylabel("E (J)"); plt.title("机械能 - 时间"); plt.grid()
+    plt.xlabel(tr("t (s)")); plt.ylabel(tr("E (J)")); plt.title(tr("机械能 - 时间")); plt.grid()
     return [fig1, fig2, fig3, fig4]
 
 

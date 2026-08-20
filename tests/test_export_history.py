@@ -9,7 +9,14 @@ import json
 
 import pytest
 
+import i18n
 import app
+
+
+@pytest.fixture(autouse=True)
+def _zh_lang():
+    """导出 JSON/CSV 断言中文表头/场景名（英文分支由 tests/smoke_app.py 的 en 冒烟覆盖）。"""
+    i18n.set_lang("zh")
 
 
 @pytest.fixture(autouse=True)

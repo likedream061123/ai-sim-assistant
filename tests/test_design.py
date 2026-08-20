@@ -11,8 +11,17 @@ import matplotlib
 matplotlib.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
 import matplotlib.pyplot as plt
 
+import pytest
+
+import i18n
 from engine import design
 from engine import beam, heat, vessel, pendulum, pipe_flow, rc_circuit
+
+
+@pytest.fixture(autouse=True)
+def _zh_lang():
+    """建议文案走中文分支断言（英文分支由 tests/smoke_app.py 的 en 冒烟覆盖）。"""
+    i18n.set_lang("zh")
 
 
 def _rows(scenario, module, params):

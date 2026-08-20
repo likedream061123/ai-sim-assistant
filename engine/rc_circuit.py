@@ -11,6 +11,8 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from i18n import tr, trf
+
 DEFAULT_PARAMS = {
     "R": 1000.0,          # 电阻 [Ω]
     "C": 100e-6,          # 电容 [F]
@@ -48,8 +50,8 @@ def solve_rc(params: dict | None = None, plot: bool = True) -> dict:
         plt.axvline(tau, color="gray", ls="--", lw=1)
         plt.axhline(v_target, color="r", ls="--", lw=1)
         plt.plot([t_charge], [v_target], "ro", ms=8, mfc="r")
-        plt.xlabel("t (s)"); plt.ylabel("电容电压 Vc (V)")
-        plt.title(f"RC 充电 | τ={tau:.3g}s，充到 {percent:.0f}% 需 {t_charge:.3g}s")
+        plt.xlabel(tr("t (s)")); plt.ylabel(tr("电容电压 Vc (V)"))
+        plt.title(trf("RC 充电 | τ={0:.3g}s，充到 {1:.0f}% 需 {2:.3g}s", tau, percent, t_charge))
         plt.legend(["Vc(t)", f"τ = {tau:.3g}s", f"{percent:.0f}% = {v_target:.2f}V"],
                    loc="lower right")
         plt.grid()
@@ -57,8 +59,8 @@ def solve_rc(params: dict | None = None, plot: bool = True) -> dict:
 
         fig2 = plt.figure(figsize=(6, 4))
         plt.plot(t, i_curve, "g-", lw=1.8)
-        plt.xlabel("t (s)"); plt.ylabel("充电电流 i (A)")
-        plt.title(f"充电电流衰减 | 初始峰值 {i_peak:.3g} A")
+        plt.xlabel(tr("t (s)")); plt.ylabel(tr("充电电流 i (A)"))
+        plt.title(trf("充电电流衰减 | 初始峰值 {0:.3g} A", i_peak))
         plt.grid()
         figs.append(fig2)
 

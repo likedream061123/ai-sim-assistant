@@ -49,6 +49,7 @@ def _main() -> None:
     try:
         # 1) 手动模式 heat
         at = AppTest.from_file(_APP, default_timeout=60)
+        at.session_state["lang"] = "zh"
         at.run()
         assert not at.exception, at.exception
         at.radio(key="input_mode").set_value("手动输入").run()
@@ -67,6 +68,7 @@ def _main() -> None:
             ("管道压降 (流体)", "pipe_Q", 20.0 / 3600.0),
         ]:
             at_r = AppTest.from_file(_APP, default_timeout=60)
+            at_r.session_state["lang"] = "zh"
             at_r.run()
             assert not at_r.exception, at_r.exception
             at_r.radio(key="input_mode").set_value("手动输入").run()
@@ -78,6 +80,7 @@ def _main() -> None:
 
         # 1c) RC 手动计算出结果卡
         at_r2 = AppTest.from_file(_APP, default_timeout=60)
+        at_r2.session_state["lang"] = "zh"
         at_r2.run()
         at_r2.radio(key="input_mode").set_value("手动输入").run()
         at_r2.selectbox(key="scenario_select").set_value("RC 充电 (电学)").run()
@@ -92,6 +95,7 @@ def _main() -> None:
                    return_value={"scenario": "beam", "params": {"L": 4, "P": 10000, "a": 1.5}}), \
              patch("agent.llm.explain", return_value="AI 解读（mock）"):
             at2 = AppTest.from_file(_APP, default_timeout=60)
+            at2.session_state["lang"] = "zh"
             at2.session_state[f"api_key_{_prov}"] = "sk-test-mock"
             at2.run()
             assert not at2.exception, at2.exception
@@ -113,6 +117,20 @@ def _main() -> None:
         assert at.session_state["input_mode"] == "手动输入", "应切到手动模式"
         print("3) 载入历史 ✅ last_parse.scenario =",
               at.session_state["last_parse"]["scenario"])
+
+        # 4) en 模式（提交/演示默认语言）：手动计算 metric label 应为英文
+        at_en = AppTest.from_file(_APP, default_timeout=60)
+        at_en.session_state["lang"] = "en"
+        at_en.run()
+        assert not at_en.exception, at_en.exception
+        at_en.radio(key="input_mode").set_value("手动输入").run()
+        at_en.selectbox(key="scenario_select").set_value("钢梁挠度 (结构校核)").run()
+        at_en.button(key="calc_go").click().run()
+        assert not at_en.exception, f"en 计算异常: {at_en.exception}"
+        en_labels = [m.label for m in at_en.metric]
+        assert "Max deflection" in en_labels, f"en metric 标签: {en_labels}"
+        assert any("History" in e.label for e in at_en.expander), "en 缺历史 expander"
+        print("4) en 模式手动计算 ✅ Max deflection / History")
         print("SMOKE ALL OK")
     finally:
         cleanup()

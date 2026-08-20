@@ -13,6 +13,8 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from i18n import tr, trf
+
 DEFAULT_PARAMS = {
     "Q": 20.0 / 3600.0,   # 体积流量 [m³/s]（默认 20 m³/h）
     "D": 0.05,            # 管内径 [m]
@@ -61,8 +63,8 @@ def solve_pipe(params: dict | None = None, plot: bool = True) -> dict:
         fig1 = plt.figure(figsize=(6, 4))
         plt.plot(xx, (xx / L) * dp / 1000.0, "b-", lw=1.8)
         plt.plot([L], [dp / 1000.0], "ro", ms=8, mfc="r")
-        plt.xlabel("沿程距离 x (m)"); plt.ylabel("累计压降 (kPa)")
-        plt.title(f"沿程压降 | 总 {dp / 1000:.2f} kPa（{dp:.0f} Pa）")
+        plt.xlabel(tr("沿程距离 x (m)")); plt.ylabel(tr("累计压降 (kPa)"))
+        plt.title(trf("沿程压降 | 总 {0:.2f} kPa（{1:.0f} Pa）", dp / 1000.0, dp))
         plt.grid()
         figs.append(fig1)
 
@@ -77,8 +79,8 @@ def solve_pipe(params: dict | None = None, plot: bool = True) -> dict:
         fig2 = plt.figure(figsize=(6, 4))
         plt.plot(qs * 3600.0, np.array(dps) / 1000.0, "r-", lw=1.8)
         plt.plot([Q * 3600.0], [dp / 1000.0], "ro", ms=8, mfc="r")
-        plt.xlabel("流量 Q (m³/h)"); plt.ylabel("压降 (kPa)")
-        plt.title(f"压降随流量 | Q={Q * 3600:.1f} m³/h → {dp / 1000:.2f} kPa")
+        plt.xlabel(tr("流量 Q (m³/h)")); plt.ylabel(tr("压降 (kPa)"))
+        plt.title(trf("压降随流量 | Q={0:.1f} m³/h → {1:.2f} kPa", Q * 3600.0, dp / 1000.0))
         plt.grid()
         figs.append(fig2)
 

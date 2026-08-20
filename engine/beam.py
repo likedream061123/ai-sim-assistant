@@ -11,6 +11,8 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from i18n import tr, trf
+
 DEFAULT_PARAMS = {
     "L": 4.0,         # 梁长 [m]
     "P": 10000.0,     # 集中荷载 [N]
@@ -59,15 +61,15 @@ def solve_beam(params: dict | None = None, plot: bool = True) -> dict:
         fig1 = plt.figure(figsize=(6, 4))
         plt.plot(xx, vv * 1000, "b-", lw=1.8)
         plt.plot(x_max, v_max * 1000, "ro", ms=8, mfc="r")
-        plt.xlabel("x (m)"); plt.ylabel("挠度 v(x) (mm, 向下为正)")
-        plt.title(f"钢梁挠度 | 最大 {v_max*1000:.3f} mm @ x={x_max:.3f} m")
+        plt.xlabel(tr("x (m)")); plt.ylabel(tr("挠度 v(x) (mm, 向下为正)"))
+        plt.title(trf("钢梁挠度 | 最大 {0:.3f} mm @ x={1:.3f} m", v_max * 1000, x_max))
         plt.grid()
         figs.append(fig1)
 
         fig2 = plt.figure(figsize=(6, 4))
         plt.plot(xx, Mm, "r-", lw=1.8)
-        plt.xlabel("x (m)"); plt.ylabel("弯矩 M(x) (N·m)")
-        plt.title(f"弯矩图 | 最大 |M| = {M_max:.0f} N·m @ x={x_Mmax:.3f} m")
+        plt.xlabel(tr("x (m)")); plt.ylabel(tr("弯矩 M(x) (N·m)"))
+        plt.title(trf("弯矩图 | 最大 |M| = {0:.0f} N·m @ x={1:.3f} m", M_max, x_Mmax))
         plt.grid()
         figs.append(fig2)
 
