@@ -165,6 +165,46 @@ def _main() -> None:
         errs = [e.value for e in at4.error]
         assert any("荷载位置" in m for m in errs), f"应显示载荷越界提示: {errs}"
         print("6) 极端输入兜底 ✅ 非法参数优雅报错不崩")
+
+        # 7) SerpApi 深度：在线查参 → 多源交叉 → 预填 + 来源标注
+        #    注：_serp_key() 读 session_state["api_key_serp"]（产品真实路径），不 patch
+        #    模块函数——AppTest 把 app.py 跑在独立命名空间，patch app._serp_key 打不到。
+        # 7a) 无 key → 回退内置典型值（info 提示），不崩
+        at5 = AppTest.from_file(_APP, default_timeout=60)
+        at5.session_state["lang"] = "zh"
+        at5.session_state["api_key_serp"] = ""     # 显式清空，无视本机记住的 key
+        at5.run()
+        assert not at5.exception, at5.exception
+        at5.radio(key="input_mode").set_value("手动输入").run()
+        at5.selectbox(key="scenario_select").set_value("钢梁挠度 (结构校核)").run()
+        b5 = [b for b in at5.button if "查钢梁典型参数" in b.label]
+        assert b5, f"缺查参按钮: {[b.label for b in at5.button]}"
+        b5[0].click().run()
+        assert not at5.exception, f"查参异常: {at5.exception}"
+        infos = [i.value for i in at5.info]
+        assert any("内置典型值" in m for m in infos), f"应回退内置值: {infos}"
+        print("7a) 无 key 查参 ✅ 回退内置典型值")
+
+        # 7b) 有 key + 搜索结果 → 共识值预填 + 来源一致标注
+        with patch("agent.serpapi.lookup_beam_material",
+                   return_value={"E": 195e9, "I": None,
+                                 "E_sources": [{"title": "Steel Modulus", "link": "https://ex.com/1"}],
+                                 "I_sources": []}):
+            at6 = AppTest.from_file(_APP, default_timeout=60)
+            at6.session_state["lang"] = "zh"
+            at6.session_state["api_key_serp"] = "sk-serp-test"
+            at6.run()
+            assert not at6.exception, at6.exception
+            at6.radio(key="input_mode").set_value("手动输入").run()
+            at6.selectbox(key="scenario_select").set_value("钢梁挠度 (结构校核)").run()
+            b6 = [b for b in at6.button if "查钢梁典型参数" in b.label][0]
+            b6.click().run()
+            assert not at6.exception, f"查参异常: {at6.exception}"
+            assert abs(at6.number_input(key="beam_E").value - 195e9) < 1e3, "E 应被预填为 195 GPa"
+            assert abs(at6.number_input(key="beam_I").value - 5e-4) < 1e-12, "I 无共识应回退内置"
+            succ = [s.value for s in at6.success]
+            assert any("195" in m and "GPa" in m for m in succ), f"应显示 E 来源一致: {succ}"
+            print("7b) 有 key 查参 ✅ E 预填 195 GPa + 来源一致标注")
         print("SMOKE ALL OK")
     finally:
         cleanup()

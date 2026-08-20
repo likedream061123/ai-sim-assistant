@@ -806,10 +806,56 @@ def _apply_advice(adjust: dict):
     st.session_state["advice_apply"] = adjust
 
 
-def _set_steel_defaults():
-    """SerpApi 按钮 on_click：点击当下写入典型钢梁参数，rerun 后输入框真实生效。"""
-    st.session_state["beam_E"] = 200e9
-    st.session_state["beam_I"] = 5e-4
+def _lookup_steel_defaults():
+    """SerpApi 按钮 on_click：在线搜索 → 多源交叉 → 共识值预填表单。
+
+    无 key / 搜索失败 / 无共识 → 回退内置典型值（E=200 GPa、I=5e-4 m⁴）。
+    预填走 last_parse + 清表单 key 的机制（同 _manualize）：直接写 widget key
+    在输入框已实例化后无效（值要等下次 rerun 才显示且触发警告），清掉 key 让
+    表单 rerun 时以新默认值重新初始化。结果与来源另存 serp_lookup 供按钮分支展示。
+    写入前按表单范围 clamp，避免越界被 number_input 拒绝。
+    """
+    found = {}
+    if _serp_key():
+        try:
+            from agent import serpapi
+            found = serpapi.lookup_beam_material(api_key=_serp_key())
+        except Exception:
+            found = {}
+    E = min(max(found.get("E") or 200e9, 1e9), 1e12)
+    I = min(max(found.get("I") or 5e-4, 1e-8), 1.0)
+    prev = (st.session_state.get("last_parse") or {}).get("params") or {}
+    for _k in _MANUAL_WIDGET_KEYS["beam"]:
+        st.session_state.pop(_k, None)
+    st.session_state["last_parse"] = {
+        "scenario": "beam",
+        "params": {**ENGINE_DEFAULTS["beam"], **prev, "E": E, "I": I},
+    }
+    st.session_state["serp_lookup"] = {
+        "E": E, "I": I,
+        "E_online": bool(found.get("E")),
+        "I_online": bool(found.get("I")),
+        "E_sources": found.get("E_sources", []),
+        "I_sources": found.get("I_sources", []),
+    }
+
+
+def _show_serp_lookup(look: dict):
+    """在线查参结果展示：共识值 + 来源标注；回退内置值则说明。"""
+    if look.get("E_online"):
+        st.success(trf("已按在线来源填入 E = {0:.0f} GPa（{1} 个来源一致）。",
+                       (look.get("E") or 0) / 1e9, len(look.get("E_sources") or [])))
+    if look.get("I_online"):
+        st.success(trf("已按在线来源填入 I = {0:.4g} m⁴（{1} 个来源一致）。",
+                       look.get("I"), len(look.get("I_sources") or [])))
+    if not (look.get("E_online") or look.get("I_online")):
+        st.info(tr("在线搜索未找到可靠一致值（或未配置 SerpApi Key），已填入内置典型值 E=200 GPa、I=5e-4 m⁴ —— 可在输入框直接修改。"))
+    srcs = (look.get("E_sources") or []) + (look.get("I_sources") or [])
+    if srcs:
+        with st.expander(tr("参数来源（多源交叉）")):
+            for s in srcs[:6]:
+                st.markdown(f"- [{s.get('title', '?')}]({s.get('link', '#')})")
+    st.caption(tr("填入的是典型值，仍可在上方输入框按你的实际截面微调。"))
 
 
 def _manualize(scenario: str, params: dict):
@@ -1290,19 +1336,10 @@ else:
         params["I"] = c5.number_input(tr("惯性矩 I (m4)"), 1e-8, 1.0, _clamp(_last.get("I"), 1e-8, 1.0),
                                       format="%.3g", key="beam_I")
         # 填典型参数走 on_click（点击当下写 session_state，rerun 后 number_input 真读新值）；
-        # 在线搜索仅作参考，不依赖它生效。
-        if st.button(tr("SerpApi 查钢梁典型参数"), key="serp_btn", on_click=_set_steel_defaults):
-            if _serp_key():
-                try:
-                    from agent import serpapi
-                    info = serpapi.search("standard steel I-beam elastic modulus moment of inertia",
-                                          api_key=_serp_key())
-                    st.write(tr("搜索结果参考："), info[:2])
-                except Exception as e:
-                    st.error(trf("SerpApi 查询失败：{0}", e))
-            else:
-                st.info(tr("未配置 SerpApi Key，已直接填入典型钢梁参数（E=200 GPa、I=5e-4 m⁴），点「计算」生效。"))
-            st.success(tr("已填入典型钢梁参数 E=200 GPa、I=5e-4 m⁴（可在上方输入框修改）。"))
+        # 在线搜索 → 多源交叉 → 预填共识值，来源标注在按钮分支展示。
+        if st.button(tr("🔍 查钢梁典型参数（在线）"), key="serp_btn",
+                     on_click=_lookup_steel_defaults):
+            _show_serp_lookup(st.session_state.get("serp_lookup") or {})
     elif scenario == "vessel":
         c1, c2, c3 = st.columns(3)
         params["P"] = c1.number_input(tr("内压 (Pa)"), 1e4, 1e8, _clamp(_last.get("P"), 1e4, 1e8), format="%.3g", key="ves_P")

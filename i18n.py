@@ -50,12 +50,16 @@ _EN: dict[str, str] = {
     # ================= 手动模式参数标签 =================
     "目标温度 (°C)": "Target temp (°C)",
     "充电目标 (%)": "Charge target (%)",
-    "SerpApi 查钢梁典型参数": "Look up typical steel-beam values (SerpApi)",
-    "SerpApi 查询失败：{0}": "SerpApi lookup failed: {0}",
-    "未配置 SerpApi Key，已直接填入典型钢梁参数（E=200 GPa、I=5e-4 m⁴），点「计算」生效。":
-        "No SerpApi key set — typical steel-beam values filled (E=200 GPa, I=5e-4 m⁴). Tap Compute.",
-    "已填入典型钢梁参数 E=200 GPa、I=5e-4 m⁴（可在上方输入框修改）。":
-        "Typical steel-beam values filled: E=200 GPa, I=5e-4 m⁴ (editable above).",
+    "🔍 查钢梁典型参数（在线）": "🔍 Look up typical steel-beam params (online)",
+    "已按在线来源填入 E = {0:.0f} GPa（{1} 个来源一致）。":
+        "Filled E = {0:.0f} GPa from online sources ({1} agreeing).",
+    "已按在线来源填入 I = {0:.4g} m⁴（{1} 个来源一致）。":
+        "Filled I = {0:.4g} m⁴ from online sources ({1} agreeing).",
+    "在线搜索未找到可靠一致值（或未配置 SerpApi Key），已填入内置典型值 E=200 GPa、I=5e-4 m⁴ —— 可在输入框直接修改。":
+        "Online search found no reliable consensus (or no SerpApi key) — filled built-in typical values E=200 GPa, I=5e-4 m⁴. Edit in the inputs above.",
+    "参数来源（多源交叉）": "Parameter sources (cross-checked)",
+    "填入的是典型值，仍可在上方输入框按你的实际截面微调。":
+        "These are typical values — adjust to your actual section in the inputs above.",
     "已应用设计建议：{0}": "Applied design suggestion: {0}",
     # ================= 结果区 =================
     "参数与来源（溯源）": "Parameters & Sources (traceability)",
@@ -293,7 +297,6 @@ _EN: dict[str, str] = {
         "No {0} API key — AI parsing unavailable. Fill your key in the left \"API Settings\", or switch to Manual input.",
     "生成解读…": "Writing interpretation…",
     "⚡ 一键应用：{0}": "⚡ Apply: {0}",
-    "搜索结果参考：": "Search results (reference):",
     "已应用设计建议：": "Applied design suggestion:",
     "，结果已重算（可在上方输入框继续微调）。": ", result recomputed (fine-tune above).",
     # ================= CSV 导出表头 =================
