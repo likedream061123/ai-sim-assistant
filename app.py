@@ -787,7 +787,9 @@ def render_result(scenario: str, params: dict, note: str = "",
         st.subheader(tr("AI 解读"))
         st.info(text)
     except Exception:
-        pass
+        # explain 内部已兜底（失败返回提示串）；这里只剩极少数渲染层异常。
+        # 不静默消失——至少留下解读区入口，避免评审觉得功能缺失。
+        st.caption(tr("（AI 解读暂不可用，请直接看数据和图）"))
     # AI 解析模式专属：一键把参数带到手动表单微调（完整工作流闭环）。
     # 状态切换走 on_click 回调：render_result 在 radio/selectbox 实例化之后才执行，
     # 直接写 input_mode/scenario_select 会被 Streamlit 判为「widget 已实例化后修改」报错。

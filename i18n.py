@@ -296,6 +296,7 @@ _EN: dict[str, str] = {
     "未配置 {0} API Key —— AI 解析暂不可用。请在左侧「API 设置」填你的 key，或切到「手动输入」直接算。":
         "No {0} API key — AI parsing unavailable. Fill your key in the left \"API Settings\", or switch to Manual input.",
     "生成解读…": "Writing interpretation…",
+    "（AI 解读暂不可用，请直接看数据和图）": "(AI interpretation temporarily unavailable — see the data and charts directly)",
     "⚡ 一键应用：{0}": "⚡ Apply: {0}",
     "已应用设计建议：": "Applied design suggestion:",
     "，结果已重算（可在上方输入框继续微调）。": ", result recomputed (fine-tune above).",

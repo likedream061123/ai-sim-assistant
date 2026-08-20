@@ -140,4 +140,6 @@ def explain(scenario: str, data: dict, api_key: str | None = None,
         )
         return resp.choices[0].message.content
     except Exception:
+        if lang == "en":
+            return "(AI interpretation temporarily unavailable — see the data and charts directly)"
         return "（AI 解读暂不可用，请直接看数据和图）"

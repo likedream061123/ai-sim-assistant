@@ -41,3 +41,13 @@ def test_explain_en_asks_for_english():
     assert isinstance(out, str) and len(out) > 0
     sent_prompt = m.return_value.chat.completions.create.call_args.kwargs["messages"][0]["content"]
     assert "plain English" in sent_prompt, "en 模式应要求英文输出"
+
+
+def test_explain_failure_fallback_language():
+    """explain 失败时内部兜底串应跟随 lang（en → 英文，不露中文）。"""
+    with patch("agent.llm._client", MagicMock(
+            side_effect=RuntimeError("timeout"))):
+        out_en = llm.explain("beam", {"v_max": 1e-4}, lang="en")
+        out_zh = llm.explain("beam", {"v_max": 1e-4}, lang="zh")
+    assert "Chinese" not in out_en and "解读" not in out_en, f"en 兜底不应含中文: {out_en}"
+    assert "解读" in out_zh, f"zh 兜底应为中文: {out_zh}"
