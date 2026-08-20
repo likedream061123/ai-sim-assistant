@@ -16,6 +16,8 @@ Describe an engineering problem in plain language — the AI extracts the parame
 
 An engineer-facing tool where **the numbers are never guessed**. You type "a 4 m steel beam, 10 kN at 1.5 m — what's the max deflection?" The LLM only *understands* the question and extracts parameters; scipy solvers do the actual math, cross-checked against MATLAB / ASME baselines. Missing a parameter? The AI proposes an engineering default and you accept it in one click. Over the limit? It tells you which parameter to change and applies the fix for you. Every number is traceable to its source.
 
+**🔗 Try it live:** https://ai-sim-assistant-9bbndox8o9sxkm4avdxhpk.streamlit.app/ — runs fully key-free (manual mode + offline NL matcher); with a key in the sidebar you get AI parsing + live SerpApi parameter lookup.
+
 ## Inspiration
 
 Every engineering student knows the struggle: you type a textbook problem into ChatGPT and it confidently returns a plausible-looking answer that's subtly wrong — because the LLM "reasons" about numbers instead of computing them. The core insight: **separate language from math.** Let an LLM do what it's great at (understanding intent, extracting parameters, explaining results) and let scipy do what it's great at (actual numerical simulation). The result is a tool that talks like a TA and computes like a solver.

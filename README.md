@@ -6,6 +6,10 @@ Describe an engineering problem in plain language → the AI extracts the parame
 
 🌐 **Bilingual UI** — English by default (submission/demo mode), switch to 中文 in the sidebar under "API Settings".
 
+## 🚀 Live Demo
+
+**[https://ai-sim-assistant-9bbndox8o9sxkm4avdxhpk.streamlit.app/](https://ai-sim-assistant-9bbndox8o9sxkm4avdxhpk.streamlit.app/)** — deployed on Streamlit Community Cloud. Works fully without any API key (manual mode + built-in offline NL matcher); with keys in the app's "API Settings" you get AI parsing + live SerpApi parameter lookup.
+
 ## Scenarios (6, across four engineering domains)
 
 | Scenario | Verification baseline |
