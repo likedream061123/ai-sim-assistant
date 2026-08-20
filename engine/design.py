@@ -115,8 +115,8 @@ def plot_compare(rows: list, scenario: str, param_name: str, current_value: floa
     ax.set_xlabel(tr(label), fontsize=10)
     ax.set_ylabel(trf("{0}（{1}）", tr(spec['label']), spec['unit']), fontsize=10)
     ax.set_title(trf("参数对比 | {0} 变化 → {1}", tr(label), tr(spec['label'])), fontsize=11)
-    ax.tick_params(colors="#2A3550")
-    ax.grid(True, color="#F0F0EB", linewidth=0.6)
+    ax.tick_params(colors="#9FB4FF")
+    ax.grid(True, color="#1C2A4A", linewidth=0.6)
     fig.tight_layout()
     return fig
 

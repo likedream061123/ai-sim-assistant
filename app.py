@@ -17,24 +17,31 @@ import os
 from pathlib import Path
 
 import matplotlib
-# 统一图表主题（所有引擎图共享，白底、统一色板——在深色页里呈"白板"感）
+# 统一图表主题（所有引擎图共享，深色底 + 主题色板 —— 引擎图一出生就是深色，
+# _darkfig 只做渲染层兜底，避免「白底创建 → 显示时再改色」的两段式不一致）
 matplotlib.rcParams.update({
     "font.sans-serif": ["Microsoft YaHei", "SimHei", "DejaVu Sans"],  # 雅黑自带中英文字形（3.9 无逐字形回退，放第一最稳）
     "axes.unicode_minus": False,
-    "figure.facecolor": "white",
-    "axes.facecolor": "white",
-    "axes.edgecolor": "#E1E1DB",
+    "figure.facecolor": "#0B1229",       # 图表深蓝底（与页面背景 #05091A 一脉相承）
+    "axes.facecolor": "#0B1229",
+    "axes.edgecolor": "#2A3550",
     "axes.linewidth": 0.8,
     "axes.grid": True,
-    "grid.color": "#F0F0EB",
+    "grid.color": "#1C2A4A",
     "grid.linewidth": 0.6,
     "axes.titlesize": 13,
     "axes.titleweight": 600,
     "axes.labelsize": 11,
+    "axes.labelcolor": "#DCE6FF",
+    "axes.titlecolor": "#DCE6FF",
+    "text.color": "#DCE6FF",
+    "xtick.color": "#9FB4FF",
+    "ytick.color": "#9FB4FF",
     "xtick.labelsize": 10,
     "ytick.labelsize": 10,
     "legend.frameon": False,
-    "axes.prop_cycle": matplotlib.cycler(color=["#2F5BFF", "#E07B3A", "#2A9D8F", "#7A6FE0"]),
+    "legend.labelcolor": "#DCE6FF",
+    "axes.prop_cycle": matplotlib.cycler(color=["#3D7BFF", "#FF9E5E", "#3FC1A9", "#9F93F0"]),
 })
 import numpy as np
 import streamlit as st
