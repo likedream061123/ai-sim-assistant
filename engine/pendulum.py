@@ -20,6 +20,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 
+from engine.checks import check_params
 from i18n import tr, trf
 
 # 默认物理参数（与 MATLAB 版一致）
@@ -182,6 +183,8 @@ def solve(params: dict | None = None, plot: bool = True) -> dict:
     w0 = p.get("w0", 0.0)
     t_end = p.get("t_end", 20.0)
     phys = {k: v for k, v in p.items() if k in DEFAULT_PARAMS}
+    check_params("pendulum", {**DEFAULT_PARAMS, **phys,
+                              "th0_deg": th0, "w0": w0, "t_end": t_end})
     res = solve_pendulum(th0_deg=th0, w0=w0, t_span=(0.0, t_end), params=phys)
     figs = plot_pendulum(res) if plot else []
     ck = period_checks(th0_deg=th0, params=phys)

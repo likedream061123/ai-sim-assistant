@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from engine.checks import check_params
 from i18n import tr, trf
 
 DEFAULT_PARAMS = {
@@ -28,6 +29,7 @@ def solve_beam(params: dict | None = None, plot: bool = True) -> dict:
     plot=False 时跳过 matplotlib 画图（供敏感性扫描等批量调用提速）。
     """
     p = {**DEFAULT_PARAMS, **(params or {})}
+    check_params("beam", p)
     L, P, a, E, I = p["L"], p["P"], p["a"], p["E"], p["I"]
     b = L - a
     xx = np.linspace(0, L, 4001)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from engine.checks import check_params
 from i18n import tr, trf
 
 DEFAULT_PARAMS = {
@@ -32,6 +33,7 @@ def solve_heat(params: dict | None = None, plot: bool = True) -> dict:
     plot=False 时跳过画图与快照累积（供敏感性扫描提速）。
     """
     p = {**DEFAULT_PARAMS, **(params or {})}
+    check_params("heat", p)
     L, N = p["L"], p["N"]
     alpha, T0, Tw, Tt = p["alpha"], p["T0"], p["T_wall"], p["T_target"]
     r, tmax = p["r"], p["tmax"]

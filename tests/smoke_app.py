@@ -149,6 +149,22 @@ def _main() -> None:
             assert any("离线" in i.value for i in at3.info), "应显示离线解析标注"
             assert any("数值周期" in m.label for m in at3.metric), "离线解析应产出结果卡"
             print("5) 离线解析 ✅ 无 key 也走通解析链路")
+
+        # 6) 极端输入兜底：a==L（荷载落在支点）能穿过 render_result 的 a>L 特判，
+        #    由 engine/checks.py 兜住 → 优雅报错不崩
+        at4 = AppTest.from_file(_APP, default_timeout=60)
+        at4.session_state["lang"] = "zh"
+        at4.run()
+        assert not at4.exception, at4.exception
+        at4.radio(key="input_mode").set_value("手动输入").run()
+        at4.selectbox(key="scenario_select").set_value("钢梁挠度 (结构校核)").run()
+        at4.number_input(key="beam_L").set_value(0.1).run()
+        at4.number_input(key="beam_a").set_value(0.1).run()
+        at4.button(key="calc_go").click().run()
+        assert not at4.exception, f"非法参数异常: {at4.exception}"
+        errs = [e.value for e in at4.error]
+        assert any("荷载位置" in m for m in errs), f"应显示载荷越界提示: {errs}"
+        print("6) 极端输入兜底 ✅ 非法参数优雅报错不崩")
         print("SMOKE ALL OK")
     finally:
         cleanup()

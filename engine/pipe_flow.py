@@ -13,6 +13,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from engine.checks import check_params
 from i18n import tr, trf
 
 DEFAULT_PARAMS = {
@@ -40,6 +41,7 @@ def colebrook_friction(Re: float, eps_D: float,
 def solve_pipe(params: dict | None = None, plot: bool = True) -> dict:
     """求流速/雷诺数/摩擦系数/沿程压降，返回压降曲线 + 关键数据。"""
     p = {**DEFAULT_PARAMS, **(params or {})}
+    check_params("pipe_flow", p)
     Q, D, L, eps = p["Q"], p["D"], p["L"], p["epsilon"]
     rho, mu = p["rho"], p["mu"]
     A = np.pi * D ** 2 / 4

@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from engine.checks import check_params
 from i18n import tr, trf
 
 DEFAULT_PARAMS = {
@@ -31,6 +32,7 @@ def solve_rc(params: dict | None = None, plot: bool = True) -> dict:
     - i_peak = V_s/R 初始充电电流
     """
     p = {**DEFAULT_PARAMS, **(params or {})}
+    check_params("rc_circuit", p)
     R, C, Vs = p["R"], p["C"], p["V_s"]
     percent = min(float(p["charge_percent"]), 99.999)
     tau = R * C

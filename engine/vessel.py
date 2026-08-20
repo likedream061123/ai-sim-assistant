@@ -9,6 +9,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from engine.checks import check_params
 from i18n import tr, trf
 
 DEFAULT_PARAMS = {
@@ -25,6 +26,7 @@ def solve_vessel(params: dict | None = None, plot: bool = True) -> dict:
     plot=False 时跳过 matplotlib 画图（供敏感性扫描提速）。
     """
     p = {**DEFAULT_PARAMS, **(params or {})}
+    check_params("vessel", p)
     P, D, sigma = p["P"], p["D"], p["sigma_allow"]
     t_req = P * D / (2 * sigma)
     t_given = p.get("t_given")
