@@ -906,11 +906,25 @@ def _llm_provider() -> str:
     return st.session_state.get("llm_provider") or os.environ.get("LLM_PROVIDER", "deepseek")
 
 
+def _secret(key: str) -> str:
+    """环境变量回落 st.secrets —— 部署到 Streamlit Community Cloud 后，dashboard 里
+    配的 secrets 不会自动变成环境变量，只能经 st.secrets 读到；本地 secrets.toml 也走这里。
+    无 secrets 环境（pytest / AppTest）静默返回空，不打断测试。
+    """
+    v = os.environ.get(key)
+    if v:
+        return v
+    try:
+        return str(st.secrets.get(key, ""))
+    except Exception:
+        return ""
+
+
 def _llm_key(provider: str | None = None) -> str:
-    """指定/当前服务商的 key：会话填的优先，回落环境变量（secrets.toml 或本机记忆）。"""
+    """指定/当前服务商的 key：会话填的优先，回落 env + st.secrets（本地 secrets.toml / 云端注入）。"""
     provider = provider or _llm_provider()
     cfg = llm.PROVIDERS.get(provider, llm.PROVIDERS["deepseek"])
-    return st.session_state.get(f"api_key_{provider}") or os.environ.get(cfg["env"], "")
+    return st.session_state.get(f"api_key_{provider}") or _secret(cfg["env"])
 
 
 def _ds_key() -> str:
@@ -964,7 +978,7 @@ _load_local_keys()
 
 def _serp_key() -> str:
     """SerpApi Key：同上（仅「查钢梁典型参数」按钮需要，可选）。"""
-    return st.session_state.get("api_key_serp") or os.environ.get("SERPAPI_KEY", "")
+    return st.session_state.get("api_key_serp") or _secret("SERPAPI_KEY")
 
 
 def _clamp(v, lo, hi):
@@ -1233,7 +1247,9 @@ if mode == "自然语言":
                     parsed = llm.parse_query(st.session_state.get("q_text", ""),
                                              api_key=_ds_key() or None,
                                              provider=_llm_provider())
-                except ValueError as e:
+                except Exception as e:
+                    # 捕任意失败（网络不可达/API 报错/响应异常）→ 走离线兜底；
+                    # 只捕 ValueError 会让 ConnectionError/Timeout 直接崩掉整个 app。
                     err = str(e)                    # 保留原始错误，离线也失败时展示
                     parsed = None
             if parsed is None:

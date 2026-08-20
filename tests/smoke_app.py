@@ -135,20 +135,22 @@ def _main() -> None:
         assert any("History" in e.label for e in at_en.expander), "en 缺历史 expander"
         print("4) en 模式手动计算 ✅ Max deflection / History")
 
-        # 5) 离线解析：无 key 时「解析并计算」可点，走内置离线规则命中示例问题
-        with patch("app._ds_key", return_value=""):
+        # 5) 离线兜底：在线解析抛异常（无 key / 网络不可达）→ 内置离线规则命中示例问题。
+        #    注：patch agent.llm.parse_query 抛错（agent.llm 是共享模块，AppTest 下有效），
+        #    模拟真实 API 失败分支，同时避免测试把真 key 发去真实调用。
+        with patch("agent.llm.parse_query", side_effect=RuntimeError("网络不可达")):
             at3 = AppTest.from_file(_APP, default_timeout=60)
             at3.session_state["lang"] = "zh"
             at3.run()
             assert not at3.exception, at3.exception
-            assert not at3.button(key="parse_go").disabled, "无 key 时解析按钮应可点（离线兜底）"
+            assert not at3.button(key="parse_go").disabled, "解析按钮应可点（离线兜底）"
             at3.text_area(key="q_text").set_value(
                 "摆长1米的单摆，从120度松手，看它的周期和能量").run()
             at3.button(key="parse_go").click().run()
             assert not at3.exception, f"离线解析异常: {at3.exception}"
             assert any("离线" in i.value for i in at3.info), "应显示离线解析标注"
             assert any("数值周期" in m.label for m in at3.metric), "离线解析应产出结果卡"
-            print("5) 离线解析 ✅ 无 key 也走通解析链路")
+            print("5) 离线解析 ✅ 在线失败回退内置规则仍走通")
 
         # 6) 极端输入兜底：a==L（荷载落在支点）能穿过 render_result 的 a>L 特判，
         #    由 engine/checks.py 兜住 → 优雅报错不崩
@@ -167,23 +169,25 @@ def _main() -> None:
         print("6) 极端输入兜底 ✅ 非法参数优雅报错不崩")
 
         # 7) SerpApi 深度：在线查参 → 多源交叉 → 预填 + 来源标注
-        #    注：_serp_key() 读 session_state["api_key_serp"]（产品真实路径），不 patch
-        #    模块函数——AppTest 把 app.py 跑在独立命名空间，patch app._serp_key 打不到。
-        # 7a) 无 key → 回退内置典型值（info 提示），不崩
-        at5 = AppTest.from_file(_APP, default_timeout=60)
-        at5.session_state["lang"] = "zh"
-        at5.session_state["api_key_serp"] = ""     # 显式清空，无视本机记住的 key
-        at5.run()
-        assert not at5.exception, at5.exception
-        at5.radio(key="input_mode").set_value("手动输入").run()
-        at5.selectbox(key="scenario_select").set_value("钢梁挠度 (结构校核)").run()
-        b5 = [b for b in at5.button if "查钢梁典型参数" in b.label]
-        assert b5, f"缺查参按钮: {[b.label for b in at5.button]}"
-        b5[0].click().run()
-        assert not at5.exception, f"查参异常: {at5.exception}"
-        infos = [i.value for i in at5.info]
-        assert any("内置典型值" in m for m in infos), f"应回退内置值: {infos}"
-        print("7a) 无 key 查参 ✅ 回退内置典型值")
+        #    注：key 走 session_state["api_key_serp"] / st.secrets / env（产品真实路径），
+        #    不 patch 模块函数——AppTest 把 app.py 跑在独立命名空间，patch app._serp_key 打不到。
+        # 7a) 搜索失败/无共识 → 回退内置典型值（info 提示），不崩。
+        #    mock lookup 抛异常走回调的 try/except 安全网，也避免测试把真 key 发去真实 SerpApi。
+        with patch("agent.serpapi.lookup_beam_material",
+                   side_effect=RuntimeError("API 不可达")):
+            at5 = AppTest.from_file(_APP, default_timeout=60)
+            at5.session_state["lang"] = "zh"
+            at5.run()
+            assert not at5.exception, at5.exception
+            at5.radio(key="input_mode").set_value("手动输入").run()
+            at5.selectbox(key="scenario_select").set_value("钢梁挠度 (结构校核)").run()
+            b5 = [b for b in at5.button if "查钢梁典型参数" in b.label]
+            assert b5, f"缺查参按钮: {[b.label for b in at5.button]}"
+            b5[0].click().run()
+            assert not at5.exception, f"查参异常: {at5.exception}"
+            infos = [i.value for i in at5.info]
+            assert any("内置典型值" in m for m in infos), f"应回退内置值: {infos}"
+            print("7a) 查参失败查参 ✅ 回退内置典型值")
 
         # 7b) 有 key + 搜索结果 → 共识值预填 + 来源一致标注
         with patch("agent.serpapi.lookup_beam_material",
