@@ -10,6 +10,7 @@
 注意: 本地 .streamlit/local_keys.json 记住的 provider 决定侧边栏默认服务商，
 自然语言分支需给对应 provider 塞一个假 key 才能让「解析并计算」enabled。
 """
+import json
 import os
 from unittest.mock import patch
 
@@ -18,6 +19,22 @@ from streamlit.testing.v1 import AppTest
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _APP = os.path.join(_ROOT, "app.py")
 _HIST = os.path.join(_ROOT, ".streamlit", "history.json")
+_KEYS = os.path.join(_ROOT, ".streamlit", "local_keys.json")
+
+
+def _default_provider() -> str:
+    """本地记住的默认服务商（env LLM_PROVIDER 优先 → local_keys.json → deepseek 兜底）。
+
+    与 app._llm_provider() 的优先级一致，确保给 parse_go 塞对 provider 的假 key。
+    """
+    prov = os.environ.get("LLM_PROVIDER")
+    if not prov:
+        try:
+            if os.path.exists(_KEYS):
+                prov = json.loads(open(_KEYS, encoding="utf-8").read()).get("provider")
+        except Exception:
+            pass
+    return prov or "deepseek"
 
 
 def _main() -> None:
@@ -70,11 +87,12 @@ def _main() -> None:
         print("1c) RC 手动计算 ✅")
 
         # 2) 自然语言（mock agent.llm；provider 用本地记住的默认 → 塞同商 key）
+        _prov = _default_provider()
         with patch("agent.llm.parse_query",
                    return_value={"scenario": "beam", "params": {"L": 4, "P": 10000, "a": 1.5}}), \
              patch("agent.llm.explain", return_value="AI 解读（mock）"):
             at2 = AppTest.from_file(_APP, default_timeout=60)
-            at2.session_state["api_key_zhipu"] = "sk-test-mock"
+            at2.session_state[f"api_key_{_prov}"] = "sk-test-mock"
             at2.run()
             assert not at2.exception, at2.exception
             at2.text_area(key="q_text").set_value(

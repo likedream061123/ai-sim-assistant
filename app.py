@@ -395,7 +395,7 @@ h2 {font-size:1.15rem; margin-top:1.9rem; font-weight:700;}
   [data-testid="stSpinner"]::before, [data-testid="stSpinner"]::after,
   [data-testid="stStatusWidgetRunningIcon"]::before, [data-testid="stStatusWidgetRunningIcon"]::after,
   [data-testid="stAlert"]:has([data-testid="stAlertContentSuccess"]),
-  [data-testid="stAlert"]:has([data-testid="stAlertContentError"]), .sk-card::after {animation:none !important;}
+  [data-testid="stAlert"]:has([data-testid="stAlertContentError"]) {animation:none !important;}
 }
 
 /* ========== 状态反馈系统化（Phase 4）：四态 token 落地 ========== */
@@ -440,31 +440,6 @@ h2 {font-size:1.15rem; margin-top:1.9rem; font-weight:700;}
   80% { transform:translateX(2px); }
 }
 [data-testid="stAlert"]:has([data-testid="stAlertContentError"]) { animation:shake-x .32s ease-out both; }
-
-/* -- empty 骨架 shimmer：未计算时的占位（aceternity skeletons 技法）-- */
-@keyframes sk-shimmer {
-  from { background-position:200% 0; }
-  to { background-position:-200% 0; }
-}
-.sk-hint { margin-top:.9rem; }
-.sk-row { display:flex; gap:14px; margin-bottom:.7rem; }
-.sk-card {
-  flex:1; min-height:76px; border-radius:14px;
-  border:1px dashed rgba(255,255,255,.14); background:rgba(255,255,255,.03);
-  padding:14px 16px; position:relative; overflow:hidden;
-}
-/* 有意的不完美：第二张卡矮一点且下沉 —— 一眼看出是「占位」不是残缺真结果 */
-.sk-card:nth-child(2) { min-height:66px; transform:translateY(5px); }
-.sk-card::after {
-  content:""; position:absolute; inset:0;
-  background:linear-gradient(100deg, transparent 30%, rgba(61,123,255,.10) 50%, transparent 70%);
-  background-size:200% 100%;
-  animation:sk-shimmer 2.2s linear infinite;
-}
-.sk-line { height:10px; border-radius:6px; background:rgba(255,255,255,.09); margin-bottom:10px; }
-.sk-line.w60 { width:60%; }
-.sk-line.w40 { width:40%; }
-.sk-hint-text { color:#9fb4ff; font-size:.88rem; line-height:1.6; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -804,20 +779,6 @@ def render_result(scenario: str, params: dict, note: str = "",
     if manualize:
         st.button("✏️ 切到手动模式微调参数", key="manualize_btn", use_container_width=True,
                   on_click=_manualize, args=(scenario, params))
-
-
-def _empty_state_hint() -> None:
-    """空态占位：未计算/未解析时结果区不空白 —— shimmer 骨架 + 有态度引导（数值永不猜）。"""
-    st.markdown("""
-<div class="sk-hint">
-  <div class="sk-row">
-    <div class="sk-card"><div class="sk-line w60"></div><div class="sk-line w40"></div></div>
-    <div class="sk-card"><div class="sk-line w60"></div><div class="sk-line w40"></div></div>
-    <div class="sk-card"><div class="sk-line w60"></div><div class="sk-line w40"></div></div>
-  </div>
-  <div class="sk-hint-text">还没开算。数值不会骗你，但也不会自己跑来 —— 说一句工程问题，或点个示例。</div>
-</div>
-""", unsafe_allow_html=True)
 
 
 def _apply_advice(adjust: dict):
@@ -1192,7 +1153,6 @@ if mode == "自然语言":
         st.session_state.pop("pending_ask", None)   # 重新解析，作废旧的追问
         st.session_state.pop("ask_result", None)    # 旧的结果卡也让位给新解析
         parsed, err = None, None
-        st.session_state["ever_parsed"] = True   # 首次解析后空态骨架让位给真实反馈
         with st.status("解析工程问题…", expanded=True) as s:
             try:
                 s.update(label="调用 AI 识别场景与参数…", state="running")
@@ -1239,8 +1199,6 @@ if mode == "自然语言":
     _ask_res = st.session_state.get("ask_result")
     if _ask_res:
         render_result(_ask_res["scenario"], _ask_res["params"], manualize=True)
-    elif not _pending and not st.session_state.get("ever_parsed"):
-        _empty_state_hint()
 
     st.markdown('<div style="height:.5rem"></div>', unsafe_allow_html=True)
     st.caption("想快速试？点一个直接填入：")
@@ -1355,8 +1313,6 @@ else:
         render_result(scenario, params, can_apply=True)
     elif _calc[2].button("计算", type="primary", use_container_width=True, key="calc_go"):
         render_result(scenario, params, can_apply=True)
-    else:
-        _empty_state_hint()
     _compare_section(scenario, params)
     _history_section()
     _verification_section()
