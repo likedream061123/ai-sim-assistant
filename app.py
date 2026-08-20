@@ -48,8 +48,24 @@ import streamlit as st
 
 import i18n
 from i18n import tr, trf, set_lang
-# set_lang 不是 Streamlit 命令，可放在 set_page_config 前；从侧边栏语言开关读当前语言（默认 en，提交/演示态）
-set_lang(st.session_state.get("lang", "en"))
+# set_lang 不是 Streamlit 命令，可放在 set_page_config 前；从侧边栏语言开关读当前语言，
+# 新会话无显式选择时按浏览器 Accept-Language 自动检测（评委英文浏览器→en，Li 中文浏览器→zh）。
+
+
+def _browser_lang_from(accept_language: str | None) -> str:
+    """Accept-Language 头 → 初始语言。以 zh 开头返回 zh，否则 en（英文兜底，演示态）。"""
+    al = (accept_language or "").lower()
+    return "zh" if al.startswith("zh") else "en"
+
+
+def _browser_lang() -> str:
+    try:
+        return _browser_lang_from(st.context.headers.get("Accept-Language"))
+    except Exception:
+        return "en"
+
+
+set_lang(st.session_state.get("lang") or _browser_lang())
 # set_page_config 必须是第一个 Streamlit 命令（layout=wide 与 favicon 在此生效）
 st.set_page_config(page_title=tr("AI 工程仿真助手"), page_icon="assets/favicon.svg", layout="wide")
 
