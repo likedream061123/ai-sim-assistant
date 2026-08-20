@@ -42,6 +42,7 @@ import streamlit as st
 st.set_page_config(page_title="AI 工程仿真助手", page_icon="assets/favicon.svg", layout="wide")
 
 import engine.pendulum, engine.heat, engine.beam, engine.vessel, engine.design as design
+import engine.rc_circuit, engine.pipe_flow
 from agent import llm
 
 # Streamlit 长驻进程会缓存已 import 的子模块（sys.modules）——改过 agent/*.py 后旧进程
@@ -399,6 +400,8 @@ SCENARIOS = {
     "钢件冷却 (热处理)": "heat",
     "钢梁挠度 (结构校核)": "beam",
     "压力容器壁厚 (设计)": "vessel",
+    "RC 充电 (电学)": "rc_circuit",
+    "管道压降 (流体)": "pipe_flow",
 }
 SCENARIOS_REV = {v: k for k, v in SCENARIOS.items()}
 ENGINES = {
@@ -406,6 +409,8 @@ ENGINES = {
     "heat": engine.heat,
     "beam": engine.beam,
     "vessel": engine.vessel,
+    "rc_circuit": engine.rc_circuit,
+    "pipe_flow": engine.pipe_flow,
 }
 ENGINE_DEFAULTS = {
     # pendulum 物理参数 + 控制参数（th0_deg=0 摆不起来 → T_num 为 None，手动模式首开会白屏）
@@ -413,6 +418,8 @@ ENGINE_DEFAULTS = {
     "heat": engine.heat.DEFAULT_PARAMS,
     "beam": engine.beam.DEFAULT_PARAMS,
     "vessel": engine.vessel.DEFAULT_PARAMS,
+    "rc_circuit": engine.rc_circuit.DEFAULT_PARAMS,
+    "pipe_flow": engine.pipe_flow.DEFAULT_PARAMS,
 }
 # 缺失参数追问：AI 识别场景后，用户口语没提到的关键参数 → 反问补齐再算。
 # 只问「用户语言里会出现的东西」（角度/尺寸/荷载/温度）；工程常数（E/I/alpha/σ/重力）
@@ -422,6 +429,8 @@ ASKABLE_PARAMS = {
     "heat": ["L", "T0", "T_wall", "T_target"],
     "beam": ["L", "P", "a"],               # 荷载位置也问；E/I 默认工程值
     "vessel": ["P", "D", "sigma_allow", "t_given"],
+    "rc_circuit": ["R", "C", "V_s", "charge_percent"],
+    "pipe_flow": ["Q", "D", "L"],           # 流体物理常数（ε/ρ/μ）默认工程值
 }
 # 追问表单 number_input 的允许范围（与手动模式一致）
 PARAM_RANGES = {
@@ -429,6 +438,8 @@ PARAM_RANGES = {
     "heat": {"L": (0.01, 1.0), "T0": (100.0, 1500.0), "T_wall": (0.0, 500.0), "T_target": (0.0, 1500.0)},
     "beam": {"L": (0.1, 20.0), "P": (100.0, 1e6), "a": (0.1, 19.9)},
     "vessel": {"P": (1e4, 1e8), "D": (0.1, 10.0), "sigma_allow": (1e7, 1e9), "t_given": (0.001, 0.5)},
+    "rc_circuit": {"R": (10.0, 1e6), "C": (1e-9, 1e-2), "V_s": (1.0, 1000.0), "charge_percent": (1.0, 99.9)},
+    "pipe_flow": {"Q": (1e-5, 1.0), "D": (0.005, 1.0), "L": (1.0, 10000.0)},
 }
 # 每场景关键数据卡：(data 键, 中文名, 单位) —— 只展示对用户有意义的键
 DISPLAY = {
@@ -454,6 +465,20 @@ DISPLAY = {
         ("t_req_mm", "所需壁厚", "mm"),
         ("sigma_actual", "实际应力", "Pa"),
         ("safe", "是否安全", ""),
+    ],
+    "rc_circuit": [
+        ("tau", "时间常数 τ", "s"),
+        ("t_charge", "充到目标时间", "s"),
+        ("v_5tau", "5τ 电压", "V"),
+        ("i_peak", "初始充电电流", "A"),
+    ],
+    "pipe_flow": [
+        ("v", "流速", "m/s"),
+        ("Re", "雷诺数", ""),
+        ("f", "摩擦系数", ""),
+        ("dp_kPa", "沿程压降", "kPa"),
+        ("head_loss", "水柱损失", "m"),
+        ("flow_type", "流态", ""),
     ],
 }
 
@@ -751,12 +776,15 @@ _MANUAL_WIDGET_KEYS = {
     "heat": ["heat_L", "heat_T0", "heat_T_wall", "heat_T_target"],
     "beam": ["beam_L", "beam_P", "beam_a", "beam_E", "beam_I"],
     "vessel": ["ves_P", "ves_D", "ves_sigma", "ves_t_given"],
+    "rc_circuit": ["rc_R", "rc_C", "rc_Vs", "rc_percent"],
+    "pipe_flow": ["pipe_Q", "pipe_D", "pipe_L"],
 }
 # 参数名 → widget key（advice 返回 adjust 用参数名，需要映射到带 key 的输入框）
 _ADVICE_KEY_MAP = {
     "heat": {"L": "heat_L"},
     "beam": {"E": "beam_E", "I": "beam_I"},
     "vessel": {"t_given": "ves_t_given"},
+    "pipe_flow": {"D": "pipe_D"},
 }
 
 
@@ -843,7 +871,7 @@ def _fill_example(text: str):
 
 
 def _verification_section():
-    """验证基准（「数值永不猜」卖点落地）：四场景默认参数下现算 vs MATLAB/ASME 基准。
+    """验证基准（「数值永不猜」卖点落地）：六场景默认参数下现算 vs MATLAB/ASME 基准。
 
     数值由 scipy 求解器算出、对照公开基准复核 —— 这是与「AI 直接给答案」类工具的本质差异。
     展示默认参数下的对照结果（默认参数=各引擎 DEFAULT_PARAMS，见引擎模块）。
@@ -861,6 +889,10 @@ def _verification_section():
              "MATLAB `beam_deflection.m` 基准 0.1226 mm，误差 <0.1%"),
             ("压力容器壁厚（设计）", "t = 5.00 mm",
              "ASME 薄壁公式 t = PD/(2σ)，解析解无误差"),
+            ("RC 充电（电学）", "τ=0.1 s，充到 90% 需 0.230 s",
+             "教科书解析解 V=Vs(1-e^(-t/τ))"),
+            ("管道压降（流体）", "D=50mm·20m³/h → 流速 2.8 m/s，压降 ≈169 kPa",
+             "Darcy-Weisbach + Colebrook，层流段对解析解 0% 误差"),
         ]
         for name, val, src in bench:
             st.markdown(f"- **{name}**：{val}　｜　{src}")
@@ -1127,10 +1159,13 @@ if mode == "自然语言":
         ("结构 · 钢梁", "一根4米简支钢梁，距左端1.5米处受10kN集中力，最大挠度多少？"),
         ("设计 · 容器", "内压1MPa、内径1米的压力容器，许用应力100MPa，需要多厚壁？"),
         ("传热 · 冷却", "半宽0.1米的钢件初始800度，放到20度空气中，中心要多久降到100度？"),
+        ("电学 · RC充电", "100微法电容经1千欧电阻充到12伏，充到90%要多久？"),
+        ("流体 · 管道压降", "100米长、内径50mm的钢管，20方每小时的水压降多少？"),
     ]
-    for col, (sc, q) in zip(st.columns(4), EXAMPLES):
-        with col:
-            st.button(sc, key=f"ex_{sc}", on_click=_fill_example, args=(q,), use_container_width=True)
+    for i in range(0, len(EXAMPLES), 3):
+        for col, (sc, q) in zip(st.columns(3), EXAMPLES[i:i + 3]):
+            with col:
+                st.button(sc, key=f"ex_{sc}", on_click=_fill_example, args=(q,), use_container_width=True)
 
     _history_section()
     _verification_section()
@@ -1190,6 +1225,25 @@ else:
             params["t_given"] = st.number_input(
                 "给定壁厚 t (m)", 0.001, 0.5, _clamp(adv_t or _last.get("t_given") or 0.006, 0.001, 0.5),
                 format="%.4f", key="ves_t_given")
+    elif scenario == "rc_circuit":
+        c1, c2, c3 = st.columns(3)
+        params["R"] = c1.number_input("电阻 R (Ω)", 10.0, 1e6, _clamp(_last.get("R"), 10.0, 1e6),
+                                      format="%.3g", key="rc_R")
+        params["C"] = c2.number_input("电容 C (F)", 1e-9, 1e-2, _clamp(_last.get("C"), 1e-9, 1e-2),
+                                      format="%.3g", key="rc_C")
+        params["V_s"] = c3.number_input("源电压 Vs (V)", 1.0, 1000.0, _clamp(_last.get("V_s"), 1.0, 1000.0),
+                                        format="%.3g", key="rc_Vs")
+        params["charge_percent"] = st.number_input("充电目标 (%)", 1.0, 99.9,
+                                                   _clamp(_last.get("charge_percent"), 1.0, 99.9),
+                                                   format="%.3g", key="rc_percent")
+    elif scenario == "pipe_flow":
+        c1, c2, c3 = st.columns(3)
+        params["Q"] = c1.number_input("流量 Q (m³/s)", 1e-5, 1.0, _clamp(_last.get("Q"), 1e-5, 1.0),
+                                      format="%.4g", key="pipe_Q")
+        params["D"] = c2.number_input("管内径 D (m)", 0.005, 1.0, _clamp(_last.get("D"), 0.005, 1.0),
+                                      format="%.4g", key="pipe_D")
+        params["L"] = c3.number_input("管长 L (m)", 1.0, 10000.0, _clamp(_last.get("L"), 1.0, 10000.0),
+                                      format="%.4g", key="pipe_L")
     _calc = st.columns([5, 1, 2])
     # 「一键应用建议」：advice 按钮把调整参数存入 session_state 并 rerun，这里消费后
     # 更新 last_parse（输入框同步显示新值）+ auto_run 触发自动重算。

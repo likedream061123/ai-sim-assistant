@@ -39,6 +39,18 @@ SENSITIVITY_SPEC = {
         "label": "所需壁厚",
         "unit": "mm",
     },
+    "rc_circuit": {
+        "params": ["R", "C", "V_s"],
+        "key_out": "t_charge",
+        "label": "充到目标时间",
+        "unit": "s",
+    },
+    "pipe_flow": {
+        "params": ["Q", "D", "L", "epsilon"],
+        "key_out": "dp",
+        "label": "沿程压降",
+        "unit": "Pa",
+    },
 }
 
 
@@ -50,6 +62,9 @@ PARAM_LABELS = {
              "alpha": "热扩散系数 α", "T_target": "目标温度 T_target"},
     "beam": {"L": "梁长 L", "P": "集中荷载 P", "a": "荷载距左端 a", "E": "弹性模量 E", "I": "惯性矩 I"},
     "vessel": {"P": "内压 P", "D": "内径 D", "sigma_allow": "许用应力 σ", "t_given": "给定壁厚 t"},
+    "rc_circuit": {"R": "电阻 R", "C": "电容 C", "V_s": "源电压 Vs", "charge_percent": "充电目标百分比"},
+    "pipe_flow": {"Q": "流量 Q", "D": "内径 D", "L": "管长 L",
+                  "epsilon": "粗糙度 ε", "rho": "密度 ρ", "mu": "黏度 μ"},
 }
 
 
@@ -230,6 +245,36 @@ def advice(scenario: str, data: dict) -> dict | None:
                     ),
                     "adjust": {"t_given": float(need)},
                     "label": f"t → {need * 1000:.1f} mm 并重算",
+                }
+        return None
+
+    if scenario == "pipe_flow":
+        # 流速经济区间判断（水 1~3 m/s）：偏快磨损/压降大 → 加大管径；偏慢易沉积 → 收管径
+        v = data.get("v")
+        if v is not None:
+            D = params.get("D", 0.05)
+            if v > 3.0:
+                need = D * 1.25
+                return {
+                    "message": (
+                        f"流速 {v:.1f} m/s 超过水的经济流速上限 3 m/s —— 流速快、磨损大，"
+                        f"且压降随流量平方上涨。流速与管径平方成反比：把管径从 "
+                        f"{D * 1000:.0f} mm 加大到约 {need * 1000:.0f} mm（+25%），"
+                        f"流速可压回 ~{v / 1.25 ** 2:.1f} m/s。"
+                    ),
+                    "adjust": {"D": float(need)},
+                    "label": f"D → {need * 1000:.0f} mm 并重算",
+                }
+            if v < 0.5:
+                need = D * 0.75
+                return {
+                    "message": (
+                        f"流速 {v:.2f} m/s 低于经济流速下限 0.5 m/s —— 管径偏大、流速偏慢，"
+                        f"杂质易沉积。建议把管径收到约 {need * 1000:.0f} mm（-25%），"
+                        f"流速提到 ~{v / 0.75 ** 2:.2f} m/s。"
+                    ),
+                    "adjust": {"D": float(need)},
+                    "label": f"D → {need * 1000:.0f} mm 并重算",
                 }
         return None
 

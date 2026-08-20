@@ -15,7 +15,9 @@ from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
-_HIST = ".streamlit/history.json"
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_APP = os.path.join(_ROOT, "app.py")
+_HIST = os.path.join(_ROOT, ".streamlit", "history.json")
 
 
 def _main() -> None:
@@ -29,7 +31,7 @@ def _main() -> None:
 
     try:
         # 1) 手动模式 heat
-        at = AppTest.from_file("app.py", default_timeout=60)
+        at = AppTest.from_file(_APP, default_timeout=60)
         at.run()
         assert not at.exception, at.exception
         at.radio(key="input_mode").set_value("手动输入").run()
@@ -42,11 +44,36 @@ def _main() -> None:
         assert any("载入参数" in b.label for b in at.button), "缺载入按钮"
         print("1) 手动模式 ✅ 导出:", dls)
 
+        # 1b) 手动模式 rc_circuit + pipe_flow（新场景表单接线 + 默认值落位）
+        for label, key, defval in [
+            ("RC 充电 (电学)", "rc_R", 1000.0),
+            ("管道压降 (流体)", "pipe_Q", 20.0 / 3600.0),
+        ]:
+            at_r = AppTest.from_file(_APP, default_timeout=60)
+            at_r.run()
+            assert not at_r.exception, at_r.exception
+            at_r.radio(key="input_mode").set_value("手动输入").run()
+            at_r.selectbox(key="scenario_select").set_value(label).run()
+            assert not at_r.exception, f"{label} 表单异常: {at_r.exception}"
+            assert abs(at_r.number_input(key=key).value - defval) < 1e-9, \
+                f"{label} 默认值异常: {at_r.number_input(key=key).value}"
+            print(f"1b) {label} 表单 ✅ 默认 {key}={defval:.4g}")
+
+        # 1c) RC 手动计算出结果卡
+        at_r2 = AppTest.from_file(_APP, default_timeout=60)
+        at_r2.run()
+        at_r2.radio(key="input_mode").set_value("手动输入").run()
+        at_r2.selectbox(key="scenario_select").set_value("RC 充电 (电学)").run()
+        at_r2.button(key="calc_go").click().run()
+        assert not at_r2.exception, f"RC 计算异常: {at_r2.exception}"
+        assert any("充到目标时间" in m.label for m in at_r2.metric), "RC 结果卡缺数据"
+        print("1c) RC 手动计算 ✅")
+
         # 2) 自然语言（mock agent.llm；provider 用本地记住的默认 → 塞同商 key）
         with patch("agent.llm.parse_query",
                    return_value={"scenario": "beam", "params": {"L": 4, "P": 10000, "a": 1.5}}), \
              patch("agent.llm.explain", return_value="AI 解读（mock）"):
-            at2 = AppTest.from_file("app.py", default_timeout=60)
+            at2 = AppTest.from_file(_APP, default_timeout=60)
             at2.session_state["api_key_zhipu"] = "sk-test-mock"
             at2.run()
             assert not at2.exception, at2.exception

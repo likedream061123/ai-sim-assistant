@@ -1,7 +1,7 @@
 """端到端集成测试：中文 → LLM 解析(mock) → 引擎真算 → AI 解读(mock)。
 
 UI 层（app.py）的 AppTest 冒烟在 CI 外单独跑，这里验证：
-1. 统一引擎接口 solve(params) -> {"figures", "data"} 对四场景全通
+1. 统一引擎接口 solve(params) -> {"figures", "data"} 对全部场景全通
 2. app.DISPLAY 的每个 (key, label, unit) 都真实存在于引擎返回 data
    （缺键 = UI 静默漏显示 = bug，这条防未来改引擎时踩雷）
 3. 完整管道: parse_query(mock) → solve → explain(mock)
@@ -31,7 +31,7 @@ def _fake_llm(content: str):
     return patch("agent.llm._client", return_value=fake_client)
 
 
-@pytest.mark.parametrize("scenario", ["pendulum", "heat", "beam", "vessel"])
+@pytest.mark.parametrize("scenario", list(app.SCENARIOS.values()))
 def test_unified_engine_interface(scenario):
     res = app.ENGINES[scenario].solve({})
     assert isinstance(res, dict) and "figures" in res and "data" in res
@@ -39,7 +39,7 @@ def test_unified_engine_interface(scenario):
     assert isinstance(res["data"], dict)
 
 
-@pytest.mark.parametrize("scenario", ["pendulum", "heat", "beam", "vessel"])
+@pytest.mark.parametrize("scenario", list(app.SCENARIOS.values()))
 def test_display_keys_exist_in_engine_data(scenario):
     """UI 数据卡引用的键必须真实存在于引擎返回。"""
     data = app.ENGINES[scenario].solve({})["data"]

@@ -12,7 +12,7 @@ matplotlib.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu S
 import matplotlib.pyplot as plt
 
 from engine import design
-from engine import beam, heat, vessel, pendulum
+from engine import beam, heat, vessel, pendulum, pipe_flow, rc_circuit
 
 
 def _rows(scenario, module, params):
@@ -166,3 +166,55 @@ def test_plot_compare_current_outside_range():
     fig = design.plot_compare(rows, "beam", "I", 1e-2)
     assert fig is not None
     plt.close(fig)
+
+
+# ---- 新场景（RC 电路 / 管道压降）----
+
+def test_pipe_sensitivity_laminar_analytic():
+    """层流段 dp=128μLQ/(πD⁴)：Q/L +20%，D 变化反向且影响最大（∝D⁻⁴），ε 无关。"""
+    p = {**pipe_flow.DEFAULT_PARAMS, "Q": 1e-5, "D": 0.01, "L": 10.0}
+    rows = _rows("pipe_flow", pipe_flow, p)
+    assert abs(rows["Q"] - 20) < 2          # dp ∝ Q（线性）
+    assert abs(rows["L"] - 20) < 2          # dp ∝ L（线性）
+    assert rows["D"] < -70                   # dp ∝ 1/D⁴，D 增大压降锐减
+    assert abs(rows["D"]) > rows["Q"]       # 管径是压降第一影响因素
+    assert abs(rows["epsilon"]) < 1e-6      # 层流摩擦与粗糙度无关
+
+
+def test_rc_sensitivity_tau_driven():
+    """t_charge ∝ RC：R/C +20%，V_s 不影响充电时长。"""
+    rows = _rows("rc_circuit", rc_circuit, rc_circuit.DEFAULT_PARAMS)
+    assert abs(rows["R"] - 20) < 2
+    assert abs(rows["C"] - 20) < 2
+    assert abs(rows["V_s"]) < 1e-6
+
+
+def test_advice_pipe_velocity_too_fast():
+    """流速超 3 m/s → 建议加大管径 +25%，压回经济区间。"""
+    d = pipe_flow.solve({"Q": 20 / 3600.0, "D": 0.02})["data"]
+    assert d["v"] > 3
+    adv = design.advice("pipe_flow", d)
+    assert adv is not None
+    assert adv["adjust"]["D"] > 0.02
+    assert "流速" in adv["message"]
+
+
+def test_advice_pipe_velocity_too_slow():
+    """流速 <0.5 m/s → 建议收小管径。"""
+    d = pipe_flow.solve({"Q": 1e-4, "D": 0.5})["data"]
+    assert d["v"] < 0.5
+    adv = design.advice("pipe_flow", d)
+    assert adv is not None
+    assert adv["adjust"]["D"] < 0.5
+
+
+def test_advice_pipe_ok_none():
+    """经济流速区间（1~3 m/s）内不打扰，只做敏感性。"""
+    d = pipe_flow.solve()["data"]
+    assert 1.0 <= d["v"] <= 3.0
+    assert design.advice("pipe_flow", d) is None
+
+
+def test_advice_rc_none():
+    """RC 无超限概念 → 不给建议。"""
+    assert design.advice("rc_circuit", rc_circuit.solve()["data"]) is None
