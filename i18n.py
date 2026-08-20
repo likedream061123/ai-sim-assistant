@@ -283,6 +283,12 @@ _EN: dict[str, str] = {
     "识别到场景：{0} ✓": "Scenario detected: {0} ✓",
     "解析失败：{0}": "Parse failed: {0}",
     "请改用手动输入。": "please switch to Manual input.",
+    "离线解析：内置规则识别（未调用网络）": "Offline parse: recognized with built-in rules (no network)",
+    "离线解析模式：无可用 API Key 或网络不可达，已用内置规则识别问题。":
+        "Offline mode: no API key or unreachable network — recognized the question with built-in rules.",
+    "未能识别场景。": "Couldn't identify the scenario.",
+    "未配置 API Key —— 可用「解析并计算」体验内置离线解析（示例问题），或切到「手动输入」直接算。":
+        "No API key — tap \"Parse & Compute\" for built-in offline parsing (sample questions), or switch to Manual input.",
     "未配置 {0} API Key —— AI 解析暂不可用。请在左侧「API 设置」填你的 key，或切到「手动输入」直接算。":
         "No {0} API key — AI parsing unavailable. Fill your key in the left \"API Settings\", or switch to Manual input.",
     "生成解读…": "Writing interpretation…",

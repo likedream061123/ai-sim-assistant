@@ -48,7 +48,7 @@ st.set_page_config(page_title=tr("AI 工程仿真助手"), page_icon="assets/fav
 
 import engine.pendulum, engine.heat, engine.beam, engine.vessel, engine.design as design
 import engine.rc_circuit, engine.pipe_flow
-from agent import llm
+from agent import llm, offline_cache
 
 # Streamlit 长驻进程会缓存已 import 的子模块（sys.modules）——改过 agent/*.py 后旧进程
 # rerun 仍拿到旧模块（曾出现缺 PROVIDERS 报错）。检测到缺关键属性时强制 reload 自愈；
@@ -1167,24 +1167,39 @@ if mode == "自然语言":
     )
     _btn = st.columns([5, 1, 2])
     _ds_ready = bool(_ds_key())
+    # 解析按钮永远可点：无 key / 无网络时走内置离线解析（示例问题），demo 链路不中断。
     if _btn[2].button(tr("解析并计算"), type="primary", use_container_width=True,
-                      disabled=not _ds_ready, key="parse_go"):
+                      key="parse_go"):
         st.session_state.pop("pending_ask", None)   # 重新解析，作废旧的追问
         st.session_state.pop("ask_result", None)    # 旧的结果卡也让位给新解析
-        parsed, err = None, None
+        parsed, err, offline = None, None, False
         with st.status(tr("解析工程问题…"), expanded=True) as s:
-            try:
-                s.update(label=tr("调用 AI 识别场景与参数…"), state="running")
-                parsed = llm.parse_query(st.session_state.get("q_text", ""),
-                                         api_key=_ds_key() or None,
-                                         provider=_llm_provider())
+            if _ds_ready:
+                try:
+                    s.update(label=tr("调用 AI 识别场景与参数…"), state="running")
+                    parsed = llm.parse_query(st.session_state.get("q_text", ""),
+                                             api_key=_ds_key() or None,
+                                             provider=_llm_provider())
+                except ValueError as e:
+                    err = str(e)                    # 保留原始错误，离线也失败时展示
+                    parsed = None
+            if parsed is None:
+                # 无 key 或 LLM 失败 → 离线兜底（内置示例规则），无网/无 key 也能演示
+                parsed = offline_cache.match_offline(st.session_state.get("q_text", ""))
+                offline = parsed is not None
+                if offline:
+                    s.update(label=tr("离线解析：内置规则识别（未调用网络）"), state="running")
+                else:
+                    if not err:
+                        err = tr("未能识别场景。")
+                    s.update(label=trf("解析失败：{0}", err), state="error", expanded=False)
+            if parsed:
                 name = SCENARIOS_REV.get(parsed["scenario"], parsed["scenario"])
                 if parsed.get("params"):
                     st.write(tr("AI 识别到的参数："), {k: v for k, v in parsed["params"].items()})
                 s.update(label=trf("识别到场景：{0} ✓", tr(name)), state="complete")
-            except ValueError as e:
-                err = str(e)
-                s.update(label=trf("解析失败：{0}", err), state="error", expanded=False)
+                if offline:
+                    st.info(tr("离线解析模式：无可用 API Key 或网络不可达，已用内置规则识别问题。"))
         if parsed:
             scenario = parsed["scenario"]
             given = parsed.get("params", {})
@@ -1207,8 +1222,7 @@ if mode == "自然语言":
         else:
             st.warning(f"{err} — {tr('请改用手动输入。')}")
     elif not _ds_ready:
-        st.warning(trf("未配置 {0} API Key —— AI 解析暂不可用。请在左侧「API 设置」填你的 key，或切到「手动输入」直接算。",
-                       tr(_pcfg['label'])))
+        st.info(tr("未配置 API Key —— 可用「解析并计算」体验内置离线解析（示例问题），或切到「手动输入」直接算。"))
 
     # rerun 恢复追问表单（用户填值触发 rerun 时解析不在路径上，靠 session_state 恢复）
     _pending = st.session_state.get("pending_ask")

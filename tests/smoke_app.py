@@ -12,11 +12,14 @@
 """
 import json
 import os
+import sys
 from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)
+import app
 _APP = os.path.join(_ROOT, "app.py")
 _HIST = os.path.join(_ROOT, ".streamlit", "history.json")
 _KEYS = os.path.join(_ROOT, ".streamlit", "local_keys.json")
@@ -131,6 +134,21 @@ def _main() -> None:
         assert "Max deflection" in en_labels, f"en metric 标签: {en_labels}"
         assert any("History" in e.label for e in at_en.expander), "en 缺历史 expander"
         print("4) en 模式手动计算 ✅ Max deflection / History")
+
+        # 5) 离线解析：无 key 时「解析并计算」可点，走内置离线规则命中示例问题
+        with patch("app._ds_key", return_value=""):
+            at3 = AppTest.from_file(_APP, default_timeout=60)
+            at3.session_state["lang"] = "zh"
+            at3.run()
+            assert not at3.exception, at3.exception
+            assert not at3.button(key="parse_go").disabled, "无 key 时解析按钮应可点（离线兜底）"
+            at3.text_area(key="q_text").set_value(
+                "摆长1米的单摆，从120度松手，看它的周期和能量").run()
+            at3.button(key="parse_go").click().run()
+            assert not at3.exception, f"离线解析异常: {at3.exception}"
+            assert any("离线" in i.value for i in at3.info), "应显示离线解析标注"
+            assert any("数值周期" in m.label for m in at3.metric), "离线解析应产出结果卡"
+            print("5) 离线解析 ✅ 无 key 也走通解析链路")
         print("SMOKE ALL OK")
     finally:
         cleanup()
