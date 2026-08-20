@@ -55,7 +55,7 @@ st.set_page_config(page_title=tr("AI 工程仿真助手"), page_icon="assets/fav
 
 import engine.pendulum, engine.heat, engine.beam, engine.vessel, engine.design as design
 import engine.rc_circuit, engine.pipe_flow
-from agent import llm, offline_cache
+from agent import llm, offline_cache, serpapi
 
 # Streamlit 长驻进程会缓存已 import 的子模块（sys.modules）——改过 agent/*.py 后旧进程
 # rerun 仍拿到旧模块（曾出现缺 PROVIDERS 报错）。检测到缺关键属性时强制 reload 自愈；
@@ -808,56 +808,98 @@ def _apply_advice(adjust: dict):
     st.session_state["advice_apply"] = adjust
 
 
-def _lookup_steel_defaults():
-    """SerpApi 按钮 on_click：在线搜索 → 多源交叉 → 共识值预填表单。
+def _serp_lookup_fill(scenario: str, lookup_fn, values: list[dict]) -> None:
+    """通用 SerpApi 查参 on_click：在线搜索 → 多源交叉 → 共识值预填表单。
 
-    无 key / 搜索失败 / 无共识 → 回退内置典型值（E=200 GPa、I=5e-4 m⁴）。
-    预填走 last_parse + 清表单 key 的机制（同 _manualize）：直接写 widget key
-    在输入框已实例化后无效（值要等下次 rerun 才显示且触发警告），清掉 key 让
-    表单 rerun 时以新默认值重新初始化。结果与来源另存 serp_lookup 供按钮分支展示。
-    写入前按表单范围 clamp，避免越界被 number_input 拒绝。
+    values 每项描述一个待查参数：
+      {"key": 参数名, "label": "E", "default": 回退值, "lo": 表单下限, "hi": 表单上限,
+       "fmt": lambda v: "200 GPa"}  —— fmt 把数值格式化成展示串。
+    lookup_fn(api_key=...) 返回 {key: 共识值|None, f"{key}_sources": [...]}。
+
+    无 key / 搜索失败 / 无共识 → 回退内置典型值。预填走 last_parse + 清表单 key
+    的机制（同 _manualize）：直接写 widget key 在输入框已实例化后无效（值要等下次
+    rerun 才显示且触发警告），清掉 key 让表单 rerun 时以新默认值重新初始化。
+    结果与来源另存 serp_lookup 供按钮分支展示。写入前按表单范围 clamp，避免越界
+    被 number_input 拒绝。
     """
     found = {}
     if _serp_key():
         try:
-            from agent import serpapi
-            found = serpapi.lookup_beam_material(api_key=_serp_key())
+            found = lookup_fn(api_key=_serp_key())
         except Exception:
             found = {}
-    E = min(max(found.get("E") or 200e9, 1e9), 1e12)
-    I = min(max(found.get("I") or 5e-4, 1e-8), 1.0)
     prev = (st.session_state.get("last_parse") or {}).get("params") or {}
-    for _k in _MANUAL_WIDGET_KEYS["beam"]:
+    new_params = {**ENGINE_DEFAULTS[scenario], **prev}
+    look_vals = []
+    for v in values:
+        key = v["key"]
+        online = found.get(key)
+        val = min(max(online if isinstance(online, (int, float)) else v["default"], v["lo"]), v["hi"])
+        new_params[key] = val
+        look_vals.append({
+            "label": v["label"], "value_text": v["fmt"](val),
+            "online": isinstance(online, (int, float)),
+            "sources": found.get(f"{key}_sources", []),
+        })
+    for _k in _MANUAL_WIDGET_KEYS[scenario]:
         st.session_state.pop(_k, None)
-    st.session_state["last_parse"] = {
-        "scenario": "beam",
-        "params": {**ENGINE_DEFAULTS["beam"], **prev, "E": E, "I": I},
-    }
-    st.session_state["serp_lookup"] = {
-        "E": E, "I": I,
-        "E_online": bool(found.get("E")),
-        "I_online": bool(found.get("I")),
-        "E_sources": found.get("E_sources", []),
-        "I_sources": found.get("I_sources", []),
-    }
+    st.session_state["last_parse"] = {"scenario": scenario, "params": new_params}
+    fallback_note = trf(
+        "在线搜索未找到可靠一致值（或未配置 SerpApi Key），已填入内置典型值 {0} —— 可在输入框直接修改。",
+        "、".join(f"{v['label']} = {v['fmt'](v['default'])}" for v in values))
+    st.session_state["serp_lookup"] = {"values": look_vals, "fallback_note": fallback_note}
+
+
+def _lookup_steel_defaults():
+    _serp_lookup_fill("beam", serpapi.lookup_beam_material, [
+        {"key": "E", "label": "E", "default": 200e9, "lo": 1e9, "hi": 1e12,
+         "fmt": lambda v: f"{v / 1e9:.0f} GPa"},
+        {"key": "I", "label": "I", "default": 5e-4, "lo": 1e-8, "hi": 1.0,
+         "fmt": lambda v: f"{v:.4g} m⁴"},
+    ])
+
+
+def _lookup_heat_defaults():
+    _serp_lookup_fill("heat", serpapi.lookup_heat_material, [
+        {"key": "alpha", "label": "α", "default": 1.17e-5, "lo": 1e-7, "hi": 1e-4,
+         "fmt": lambda v: f"{v:.3g} m²/s"},
+    ])
+
+
+def _lookup_pipe_defaults():
+    _serp_lookup_fill("pipe_flow", serpapi.lookup_pipe_roughness, [
+        {"key": "epsilon", "label": "ε", "default": 45e-6, "lo": 1e-6, "hi": 1e-3,
+         "fmt": lambda v: f"{v:.3g} m"},
+    ])
+
+
+def _lookup_rc_defaults():
+    _serp_lookup_fill("rc_circuit", serpapi.lookup_rc_components, [
+        {"key": "R", "label": "R", "default": 1000.0, "lo": 10.0, "hi": 1e6,
+         "fmt": lambda v: f"{v:.3g} Ω"},
+        {"key": "C", "label": "C", "default": 100e-6, "lo": 1e-9, "hi": 1e-2,
+         "fmt": lambda v: f"{v:.3g} F"},
+    ])
 
 
 def _show_serp_lookup(look: dict):
-    """在线查参结果展示：共识值 + 来源标注；回退内置值则说明。"""
-    if look.get("E_online"):
-        st.success(trf("已按在线来源填入 E = {0:.0f} GPa（{1} 个来源一致）。",
-                       (look.get("E") or 0) / 1e9, len(look.get("E_sources") or [])))
-    if look.get("I_online"):
-        st.success(trf("已按在线来源填入 I = {0:.4g} m⁴（{1} 个来源一致）。",
-                       look.get("I"), len(look.get("I_sources") or [])))
-    if not (look.get("E_online") or look.get("I_online")):
-        st.info(tr("在线搜索未找到可靠一致值（或未配置 SerpApi Key），已填入内置典型值 E=200 GPa、I=5e-4 m⁴ —— 可在输入框直接修改。"))
-    srcs = (look.get("E_sources") or []) + (look.get("I_sources") or [])
+    """在线查参结果展示：共识值 + 来源标注；全部回退内置值则说明。"""
+    values = look.get("values") or []
+    if any(v.get("online") for v in values):
+        for v in values:
+            if v.get("online"):
+                st.success(trf("已按在线来源填入 {0} = {1}（{2} 个来源一致）。",
+                               v.get("label", ""), v.get("value_text", ""),
+                               len(v.get("sources") or [])))
+    else:
+        st.info(look.get("fallback_note") or tr(
+            "在线搜索未找到可靠一致值（或未配置 SerpApi Key），已填入内置典型值 —— 可在输入框直接修改。"))
+    srcs = [s for v in values for s in (v.get("sources") or [])]
     if srcs:
         with st.expander(tr("参数来源（多源交叉）")):
             for s in srcs[:6]:
                 st.markdown(f"- [{s.get('title', '?')}]({s.get('link', '#')})")
-    st.caption(tr("填入的是典型值，仍可在上方输入框按你的实际截面微调。"))
+    st.caption(tr("填入的是典型值，仍可在上方输入框微调。"))
 
 
 def _manualize(scenario: str, params: dict):
@@ -884,11 +926,11 @@ def _manualize(scenario: str, params: dict):
 # 写这些 key，manualize 带入 AI 新解析值要清掉这些 key，否则输入框不跟随更新）。
 _MANUAL_WIDGET_KEYS = {
     "pendulum": ["pend_th0", "pend_w0", "pend_t_end"],
-    "heat": ["heat_L", "heat_T0", "heat_T_wall", "heat_T_target"],
+    "heat": ["heat_L", "heat_T0", "heat_T_wall", "heat_T_target", "heat_alpha"],
     "beam": ["beam_L", "beam_P", "beam_a", "beam_E", "beam_I"],
     "vessel": ["ves_P", "ves_D", "ves_sigma", "ves_t_given"],
     "rc_circuit": ["rc_R", "rc_C", "rc_Vs", "rc_percent"],
-    "pipe_flow": ["pipe_Q", "pipe_D", "pipe_L"],
+    "pipe_flow": ["pipe_Q", "pipe_D", "pipe_L", "pipe_eps"],
 }
 # 参数名 → widget key（advice 返回 adjust 用参数名，需要映射到带 key 的输入框）
 _ADVICE_KEY_MAP = {
@@ -1353,6 +1395,13 @@ else:
         params["T0"] = c2.number_input(tr("初始温度 (°C)"), 100.0, 1500.0, _clamp(_last.get("T0"), 100.0, 1500.0), key="heat_T0")
         params["T_wall"] = c3.number_input(tr("介质温度 (°C)"), 0.0, 500.0, _clamp(_last.get("T_wall"), 0.0, 500.0), key="heat_T_wall")
         params["T_target"] = st.number_input(tr("目标温度 (°C)"), 0.0, 1500.0, _clamp(_last.get("T_target"), 0.0, 1500.0), key="heat_T_target")
+        params["alpha"] = st.number_input(tr("热扩散系数 α (m²/s)"), 1e-7, 1e-4,
+                                          _clamp(_last.get("alpha"), 1e-7, 1e-4),
+                                          format="%.3g", key="heat_alpha")
+        # 在线查参（SerpApi 多源交叉）：预填真实材料热扩散系数，来源标注在按钮分支
+        if st.button(tr("🔍 查钢热扩散系数（在线）"), key="serp_heat_btn",
+                     on_click=_lookup_heat_defaults):
+            _show_serp_lookup(st.session_state.get("serp_lookup") or {})
     elif scenario == "beam":
         c1, c2, c3 = st.columns(3)
         params["L"] = c1.number_input(tr("梁长 (m)"), 0.1, 20.0, _clamp(_last.get("L"), 0.1, 20.0), key="beam_L")
@@ -1391,6 +1440,10 @@ else:
         params["charge_percent"] = st.number_input(tr("充电目标 (%)"), 1.0, 99.9,
                                                    _clamp(_last.get("charge_percent"), 1.0, 99.9),
                                                    format="%.3g", key="rc_percent")
+        # 在线查参（SerpApi 多源交叉）：预填常用元件 R/C，来源标注在按钮分支
+        if st.button(tr("🔍 查常用元件值（在线）"), key="serp_rc_btn",
+                     on_click=_lookup_rc_defaults):
+            _show_serp_lookup(st.session_state.get("serp_lookup") or {})
     elif scenario == "pipe_flow":
         c1, c2, c3 = st.columns(3)
         params["Q"] = c1.number_input(tr("流量 Q (m³/s)"), 1e-5, 1.0, _clamp(_last.get("Q"), 1e-5, 1.0),
@@ -1399,6 +1452,13 @@ else:
                                       format="%.4g", key="pipe_D")
         params["L"] = c3.number_input(tr("管长 L (m)"), 1.0, 10000.0, _clamp(_last.get("L"), 1.0, 10000.0),
                                       format="%.4g", key="pipe_L")
+        params["epsilon"] = st.number_input(tr("绝对粗糙度 ε (m)"), 1e-6, 1e-3,
+                                            _clamp(_last.get("epsilon"), 1e-6, 1e-3),
+                                            format="%.3g", key="pipe_eps")
+        # 在线查参（SerpApi 多源交叉）：预填真实管壁粗糙度，来源标注在按钮分支
+        if st.button(tr("🔍 查管壁粗糙度（在线）"), key="serp_pipe_btn",
+                     on_click=_lookup_pipe_defaults):
+            _show_serp_lookup(st.session_state.get("serp_lookup") or {})
     _calc = st.columns([5, 1, 2])
     # 「一键应用建议」：advice 按钮把调整参数存入 session_state 并 rerun，这里消费后
     # 更新 last_parse（输入框同步显示新值）+ auto_run 触发自动重算。

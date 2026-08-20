@@ -51,15 +51,20 @@ _EN: dict[str, str] = {
     "目标温度 (°C)": "Target temp (°C)",
     "充电目标 (%)": "Charge target (%)",
     "🔍 查钢梁典型参数（在线）": "🔍 Look up typical steel-beam params (online)",
-    "已按在线来源填入 E = {0:.0f} GPa（{1} 个来源一致）。":
-        "Filled E = {0:.0f} GPa from online sources ({1} agreeing).",
-    "已按在线来源填入 I = {0:.4g} m⁴（{1} 个来源一致）。":
-        "Filled I = {0:.4g} m⁴ from online sources ({1} agreeing).",
-    "在线搜索未找到可靠一致值（或未配置 SerpApi Key），已填入内置典型值 E=200 GPa、I=5e-4 m⁴ —— 可在输入框直接修改。":
-        "Online search found no reliable consensus (or no SerpApi key) — filled built-in typical values E=200 GPa, I=5e-4 m⁴. Edit in the inputs above.",
+    "🔍 查钢热扩散系数（在线）": "🔍 Look up steel thermal diffusivity (online)",
+    "🔍 查管壁粗糙度（在线）": "🔍 Look up pipe wall roughness (online)",
+    "🔍 查常用元件值（在线）": "🔍 Look up common component values (online)",
+    "热扩散系数 α (m²/s)": "Thermal diffusivity α (m²/s)",
+    "绝对粗糙度 ε (m)": "Absolute roughness ε (m)",
+    "已按在线来源填入 {0} = {1}（{2} 个来源一致）。":
+        "Filled {0} = {1} from {2} agreeing online sources.",
+    "在线搜索未找到可靠一致值（或未配置 SerpApi Key），已填入内置典型值 {0} —— 可在输入框直接修改。":
+        "No reliable consensus found online (or no SerpApi key) — filled built-in typical values {0}. Edit in the inputs above.",
+    "在线搜索未找到可靠一致值（或未配置 SerpApi Key），已填入内置典型值 —— 可在输入框直接修改。":
+        "No reliable consensus found online (or no SerpApi key) — filled built-in typical values. Edit in the inputs above.",
     "参数来源（多源交叉）": "Parameter sources (cross-checked)",
-    "填入的是典型值，仍可在上方输入框按你的实际截面微调。":
-        "These are typical values — adjust to your actual section in the inputs above.",
+    "填入的是典型值，仍可在上方输入框微调。":
+        "These are typical values — fine-tune them in the inputs above.",
     "已应用设计建议：{0}": "Applied design suggestion: {0}",
     # ================= 结果区 =================
     "参数与来源（溯源）": "Parameters & Sources (traceability)",

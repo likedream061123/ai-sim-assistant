@@ -104,6 +104,16 @@ def _consensus(values: list[tuple[float, dict]], lo: float, hi: float,
     return med, srcs
 
 
+def _dedup(srcs: list[dict]) -> list[dict]:
+    """按 link 去重支撑来源（同一页面可能被多次匹配）。"""
+    seen, out = set(), []
+    for s in srcs:
+        if s["link"] and s["link"] not in seen:
+            seen.add(s["link"])
+            out.append(s)
+    return out
+
+
 def lookup_beam_material(api_key: str | None = None, num: int = 5) -> dict:
     """搜索钢梁典型 E/I 并多源交叉，返回共识值与支撑来源。
 
@@ -129,13 +139,150 @@ def lookup_beam_material(api_key: str | None = None, num: int = 5) -> dict:
     E, E_srcs = _consensus(E_hits, 150e9, 260e9, 0.05)
     I, I_srcs = _consensus(I_hits, 1e-8, 1e-2, 0.15)
 
-    def dedup(srcs):
-        seen, out = set(), []
-        for s in srcs:
-            if s["link"] and s["link"] not in seen:
-                seen.add(s["link"])
-                out.append(s)
-        return out
-
     return {"E": E, "I": I,
-            "E_sources": dedup(E_srcs), "I_sources": dedup(I_srcs)}
+            "E_sources": _dedup(E_srcs), "I_sources": _dedup(I_srcs)}
+
+
+# ---------------------------------------------------------------------------
+# 管道绝对粗糙度（pipe_flow 的 ε）
+# ---------------------------------------------------------------------------
+
+def _extract_roughness(text: str) -> list[float]:
+    """从文本提取绝对粗糙度候选值 [m]（钢管 ε 常见 0.015~0.2 mm）。
+
+    识别毫米（`0.045 mm`）与微米（`45 µm` / `45 um` / `45 microns`）两种写法。
+    范围外（混凝土、铸铁管等数量级差异大）剔除，避免跨管材污染共识。
+    """
+    out = []
+    for m in re.finditer(r"(\d+(?:\.\d+)?)\s*mm\b", text, re.I):
+        v = float(m.group(1)) * 1e-3
+        if 1e-5 <= v <= 5e-4:
+            out.append(v)
+    for m in re.finditer(r"(\d+(?:\.\d+)?)\s*(?:µm|μm|um)\b|(\d+(?:\.\d+)?)\s*microns?\b",
+                         text, re.I):
+        v = float(m.group(1) or m.group(2)) * 1e-6
+        if 1e-5 <= v <= 5e-4:
+            out.append(v)
+    return out
+
+
+def lookup_pipe_roughness(api_key: str | None = None, num: int = 5,
+                          material: str = "steel") -> dict:
+    """搜索管道绝对粗糙度并多源交叉，返回 {"epsilon", "epsilon_sources"}。"""
+    results: list[dict] = []
+    for q in (f"{material} pipe absolute roughness epsilon mm",
+              "commercial steel pipe roughness mm"):
+        results.extend(search(q, api_key=api_key, num=num))
+    hits = []
+    for r in results:
+        text = f"{r['title']} {r['snippet']}"
+        src = {"title": r["title"], "link": r["link"]}
+        for v in _extract_roughness(text):
+            hits.append((v, src))
+    eps, eps_srcs = _consensus(hits, 1e-5, 5e-4, 0.3)
+    return {"epsilon": eps, "epsilon_sources": _dedup(eps_srcs)}
+
+
+# ---------------------------------------------------------------------------
+# 材料热扩散系数（heat 的 α）
+# ---------------------------------------------------------------------------
+
+def _extract_diffusivity(text: str, lo: float = 5e-6, hi: float = 5e-5) -> list[float]:
+    """从文本提取热扩散系数候选值 [m²/s]（钢 α 常见 ~1.17e-5）。
+
+    识别三种写法：`1.17×10⁻⁵ m²/s`（上标归一化）、`1.17e-5 m2/s`、
+    `11.7 mm²/s`（mm²/s 转 m²/s 乘 1e-6，钢常见写法）。范围按材料过滤防污染。
+    """
+    text = text.translate(str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺", "0123456789-+"))
+    out = []
+    # 10 的幂：1.17×10⁻⁵ m²/s / 1.17x10-5 m2/s
+    for m in re.finditer(
+        r"(\d+(?:\.\d+)?)\s*(?:[×x*]\s*)?10\s*\^?\s*([-+−]?\d+)\s*m\s*\^?\s*2\s*/?\s*s\b",
+        text, re.I):
+        v = float(m.group(1)) * 10.0 ** int(m.group(2))
+        if lo <= v <= hi:
+            out.append(v)
+    # 直接科学记法：1.17e-5 m2/s
+    for m in re.finditer(r"(\d+(?:\.\d+)?e[-+−]?\d+)\s*m\s*\^?\s*2\s*/?\s*s\b", text, re.I):
+        v = float(m.group(1))
+        if lo <= v <= hi:
+            out.append(v)
+    # 毫米平方：11.7 mm²/s / 11.7 mm^2/s
+    for m in re.finditer(r"(\d+(?:\.\d+)?)\s*mm\s*\^?\s*2\s*/?\s*s\b", text, re.I):
+        v = float(m.group(1)) * 1e-6
+        if lo <= v <= hi:
+            out.append(v)
+    return out
+
+
+def lookup_heat_material(api_key: str | None = None, num: int = 5,
+                         material: str = "steel") -> dict:
+    """搜索某材料热扩散系数并多源交叉，返回 {"alpha", "alpha_sources"}。
+
+    material 决定提取范围（钢/铝/铜热扩散差一个量级，跨材料聚簇会失真），
+    只认已收录材料，未收录回退钢的范围。
+    """
+    ranges = {"steel": (5e-6, 5e-5), "aluminum": (3e-5, 2e-4), "copper": (5e-5, 3e-4)}
+    lo, hi = ranges.get(str(material).lower(), ranges["steel"])
+    results: list[dict] = []
+    for q in (f"thermal diffusivity of {material} m2/s",
+              f"{material} thermal diffusivity m^2/s"):
+        results.extend(search(q, api_key=api_key, num=num))
+    hits = []
+    for r in results:
+        text = f"{r['title']} {r['snippet']}"
+        src = {"title": r["title"], "link": r["link"]}
+        for v in _extract_diffusivity(text, lo, hi):
+            hits.append((v, src))
+    alpha, alpha_srcs = _consensus(hits, lo, hi, 0.1)
+    return {"alpha": alpha, "alpha_sources": _dedup(alpha_srcs)}
+
+
+# ---------------------------------------------------------------------------
+# RC 常用元件值（rc_circuit 的 R / C）
+# ---------------------------------------------------------------------------
+
+def _extract_resistance(text: str) -> list[float]:
+    """从文本提取电阻候选值 [Ω]（常见 10 Ω ~ 1 MΩ）。识别 kΩ / kOhm / MΩ 前缀。"""
+    out = []
+    for m in re.finditer(r"(\d+(?:\.\d+)?)\s*([kKmM])?\s*(?:Ω|Ohm|ohm|Ω)", text):
+        v = float(m.group(1)) * {"k": 1e3, "K": 1e3, "M": 1e6, "m": 1e3}.get(m.group(2) or "", 1.0)
+        if 10.0 <= v <= 1e6:
+            out.append(v)
+    return out
+
+
+def _extract_capacitance(text: str) -> list[float]:
+    """从文本提取电容候选值 [F]（常见 nF ~ mF）。识别 µF / uF / mF / microfarad。"""
+    out = []
+    mult = {"p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6, "μ": 1e-6, "m": 1e-3}
+    for m in re.finditer(r"(\d+(?:\.\d+)?)\s*([pnµmμu])?\s*F\b", text, re.I):
+        unit = (m.group(2) or "").lower()
+        v = float(m.group(1)) * mult.get(unit, 1.0)
+        if 1e-9 <= v <= 1e-2:
+            out.append(v)
+    for m in re.finditer(r"(\d+(?:\.\d+)?)\s*microfarads?\b", text, re.I):
+        v = float(m.group(1)) * 1e-6
+        if 1e-9 <= v <= 1e-2:
+            out.append(v)
+    return out
+
+
+def lookup_rc_components(api_key: str | None = None, num: int = 5) -> dict:
+    """搜索 RC 电路常用元件值并多源交叉，返回 {"R","C","R_sources","C_sources"}。"""
+    results: list[dict] = []
+    for q in ("RC timing circuit common resistor value kOhm",
+              "RC timer typical capacitor value microfarad"):
+        results.extend(search(q, api_key=api_key, num=num))
+    R_hits, C_hits = [], []
+    for r in results:
+        text = f"{r['title']} {r['snippet']}"
+        src = {"title": r["title"], "link": r["link"]}
+        for v in _extract_resistance(text):
+            R_hits.append((v, src))
+        for v in _extract_capacitance(text):
+            C_hits.append((v, src))
+    R, R_srcs = _consensus(R_hits, 10.0, 1e6, 0.2)
+    C, C_srcs = _consensus(C_hits, 1e-9, 1e-2, 0.2)
+    return {"R": R, "C": C,
+            "R_sources": _dedup(R_srcs), "C_sources": _dedup(C_srcs)}

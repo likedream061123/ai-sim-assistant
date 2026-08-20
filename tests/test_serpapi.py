@@ -115,3 +115,145 @@ def test_lookup_raises_without_key(monkeypatch):
     monkeypatch.delenv("SERPAPI_KEY", raising=False)
     with pytest.raises(ValueError):
         serpapi.lookup_beam_material(api_key=None)
+
+
+# ---------------- 提取：管道绝对粗糙度 ε ----------------
+
+def test_extract_roughness_mm():
+    text = "commercial steel pipe absolute roughness 0.045 mm"
+    assert [v * 1e3 for v in serpapi._extract_roughness(text)] == [0.045]
+
+
+def test_extract_roughness_microns():
+    text = "steel pipe roughness 45 µm"
+    assert abs(serpapi._extract_roughness(text)[0] - 45e-6) < 1e-12
+
+
+def test_extract_roughness_um_spelling():
+    assert abs(serpapi._extract_roughness("roughness 45 um")[0] - 45e-6) < 1e-12
+
+
+def test_extract_roughness_filters_other_pipes():
+    # 混凝土管 1.5 mm 在钢管范围外 → 剔除，避免跨管材污染
+    assert serpapi._extract_roughness("concrete pipe roughness 1.5 mm") == []
+
+
+# ---------------- 提取：材料热扩散系数 α ----------------
+
+def test_extract_diffusivity_scientific():
+    text = "thermal diffusivity of steel 1.17e-5 m2/s"
+    vals = serpapi._extract_diffusivity(text)
+    assert len(vals) == 1
+    assert abs(vals[0] - 1.17e-5) < 1e-9
+
+
+def test_extract_diffusivity_superscript():
+    text = "α = 1.17×10⁻⁵ m²/s"
+    vals = serpapi._extract_diffusivity(text)
+    assert abs(vals[0] - 1.17e-5) < 1e-9
+
+
+def test_extract_diffusivity_mm2_per_s():
+    text = "steel thermal diffusivity 11.7 mm2/s"     # 11.7 mm²/s = 1.17e-5 m²/s
+    vals = serpapi._extract_diffusivity(text)
+    assert abs(vals[0] - 1.17e-5) < 1e-9
+
+
+def test_extract_diffusivity_range_filters_aluminum():
+    # 钢范围 [5e-6, 5e-5]：铝 8.4e-5 应被剔除，只留钢值
+    text = "aluminum 84e-6 m2/s steel 1.17e-5 m2/s"
+    vals = serpapi._extract_diffusivity(text, 5e-6, 5e-5)
+    assert len(vals) == 1 and abs(vals[0] - 1.17e-5) < 1e-9
+
+
+# ---------------- 提取：电阻 R / 电容 C ----------------
+
+def test_extract_resistance_kohm():
+    assert abs(serpapi._extract_resistance("typical value 10 kΩ resistor")[0] - 10e3) < 1e-6
+
+
+def test_extract_resistance_plain_ohm():
+    assert serpapi._extract_resistance("1000 Ω") == [1000.0]
+
+
+def test_extract_resistance_megaohm():
+    assert abs(serpapi._extract_resistance("1 MΩ")[0] - 1e6) < 1e-6
+
+
+def test_extract_capacitance_microfarad():
+    assert abs(serpapi._extract_capacitance("common value 100 µF capacitor")[0] - 100e-6) < 1e-12
+
+
+def test_extract_capacitance_uf_spelling():
+    assert abs(serpapi._extract_capacitance("10 uF")[0] - 10e-6) < 1e-12
+
+
+def test_extract_capacitance_millifarad():
+    assert abs(serpapi._extract_capacitance("1 mF")[0] - 1e-3) < 1e-12
+
+
+def test_extract_capacitance_word():
+    assert abs(serpapi._extract_capacitance("100 microfarad")[0] - 100e-6) < 1e-12
+
+
+# ---------------- 完整工作流：三场景查参 ----------------
+
+def test_lookup_pipe_roughness_crosschecks(monkeypatch):
+    fake = [
+        {"title": "Roughness", "snippet": "commercial steel pipe absolute roughness 0.045 mm",
+         "link": "https://ex.com/p1"},
+        {"title": "Moody", "snippet": "steel pipe roughness 45 µm typical",
+         "link": "https://ex.com/p2"},
+        {"title": "noise", "snippet": "pipe length 100 m", "link": "https://ex.com/p3"},
+    ]
+    monkeypatch.setattr(serpapi, "search", lambda q, api_key=None, num=5: fake)
+    out = serpapi.lookup_pipe_roughness(api_key="k")
+    assert abs(out["epsilon"] - 45e-6) < 1e-9
+    assert len(out["epsilon_sources"]) >= 1
+
+
+def test_lookup_heat_material_crosschecks(monkeypatch):
+    fake = [
+        {"title": "Diff", "snippet": "thermal diffusivity of steel 1.17e-5 m2/s",
+         "link": "https://ex.com/h1"},
+        {"title": "Thermo", "snippet": "steel α = 1.17×10⁻⁵ m²/s",
+         "link": "https://ex.com/h2"},
+    ]
+    monkeypatch.setattr(serpapi, "search", lambda q, api_key=None, num=5: fake)
+    out = serpapi.lookup_heat_material(api_key="k")
+    assert abs(out["alpha"] - 1.17e-5) < 1e-9
+    assert len(out["alpha_sources"]) == 2
+
+
+def test_lookup_heat_material_aluminum_range(monkeypatch):
+    fake = [{"title": "a", "snippet": "aluminum thermal diffusivity 8.4e-5 m2/s",
+             "link": "https://ex.com/a1"},
+            {"title": "b", "snippet": "aluminum 8.5e-5 m2/s", "link": "https://ex.com/a2"}]
+    monkeypatch.setattr(serpapi, "search", lambda q, api_key=None, num=5: fake)
+    out = serpapi.lookup_heat_material(api_key="k", material="aluminum")
+    assert abs(out["alpha"] - 8.45e-5) < 1e-8
+    assert len(out["alpha_sources"]) == 2
+
+
+def test_lookup_rc_components_crosschecks(monkeypatch):
+    fake = [
+        {"title": "timer", "snippet": "use a 10 kΩ resistor and 100 µF capacitor for a 1 s timer",
+         "link": "https://ex.com/r1"},
+        {"title": "555", "snippet": "typical 555 values: 10 kOhm, 100 uF",
+         "link": "https://ex.com/r2"},
+    ]
+    monkeypatch.setattr(serpapi, "search", lambda q, api_key=None, num=5: fake)
+    out = serpapi.lookup_rc_components(api_key="k")
+    assert abs(out["R"] - 10e3) < 1e-6
+    assert abs(out["C"] - 100e-6) < 1e-12
+
+
+def test_lookup_new_scenarios_no_consensus(monkeypatch):
+    fake = [{"title": "a", "snippet": "nothing relevant here", "link": "/a"},
+            {"title": "b", "snippet": "more noise", "link": "/b"}]
+    monkeypatch.setattr(serpapi, "search", lambda q, api_key=None, num=5: fake)
+    assert serpapi.lookup_pipe_roughness(api_key="k")["epsilon"] is None
+    assert serpapi.lookup_heat_material(api_key="k")["alpha"] is None
+    r = serpapi.lookup_rc_components(api_key="k")
+    assert r["R"] is None and r["C"] is None
+    assert r["R_sources"] == [] and r["C_sources"] == []

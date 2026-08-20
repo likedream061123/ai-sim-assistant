@@ -209,6 +209,81 @@ def _main() -> None:
             succ = [s.value for s in at6.success]
             assert any("195" in m and "GPa" in m for m in succ), f"应显示 E 来源一致: {succ}"
             print("7b) 有 key 查参 ✅ E 预填 195 GPa + 来源一致标注")
+
+        # 7c) heat 在线查热扩散系数：共识值预填 heat_alpha + 来源一致标注
+        with patch("agent.serpapi.lookup_heat_material",
+                   return_value={"alpha": 1.17e-5,
+                                 "alpha_sources": [{"title": "Steel Diffusivity", "link": "https://ex.com/h1"}]}):
+            at7 = AppTest.from_file(_APP, default_timeout=60)
+            at7.session_state["lang"] = "zh"
+            at7.session_state["api_key_serp"] = "sk-serp-test"
+            at7.run()
+            assert not at7.exception, at7.exception
+            at7.radio(key="input_mode").set_value("手动输入").run()
+            at7.selectbox(key="scenario_select").set_value("钢件冷却 (热处理)").run()
+            b7 = [b for b in at7.button if "查钢热扩散系数" in b.label]
+            assert b7, f"缺 heat 查参按钮: {[b.label for b in at7.button]}"
+            b7[0].click().run()
+            assert not at7.exception, f"heat 查参异常: {at7.exception}"
+            assert abs(at7.number_input(key="heat_alpha").value - 1.17e-5) < 1e-9, "α 应被预填"
+            succ7 = [s.value for s in at7.success]
+            assert any("来源一致" in m for m in succ7), f"应显示来源一致: {succ7}"
+            print("7c) heat 查热扩散 ✅ α 预填 + 来源标注")
+
+        # 7d) pipe 在线查管壁粗糙度：共识值预填 pipe_eps
+        with patch("agent.serpapi.lookup_pipe_roughness",
+                   return_value={"epsilon": 45e-6,
+                                 "epsilon_sources": [{"title": "Roughness", "link": "https://ex.com/p1"}]}):
+            at8 = AppTest.from_file(_APP, default_timeout=60)
+            at8.session_state["lang"] = "zh"
+            at8.session_state["api_key_serp"] = "sk-serp-test"
+            at8.run()
+            assert not at8.exception, at8.exception
+            at8.radio(key="input_mode").set_value("手动输入").run()
+            at8.selectbox(key="scenario_select").set_value("管道压降 (流体)").run()
+            b8 = [b for b in at8.button if "查管壁粗糙度" in b.label]
+            assert b8, f"缺 pipe 查参按钮: {[b.label for b in at8.button]}"
+            b8[0].click().run()
+            assert not at8.exception, f"pipe 查参异常: {at8.exception}"
+            assert abs(at8.number_input(key="pipe_eps").value - 45e-6) < 1e-9, "ε 应被预填"
+            print("7d) pipe 查管壁粗糙度 ✅ ε 预填")
+
+        # 7e) rc 在线查常用元件：R/C 都预填
+        with patch("agent.serpapi.lookup_rc_components",
+                   return_value={"R": 10e3, "C": 100e-6,
+                                 "R_sources": [{"title": "Timer", "link": "https://ex.com/r1"}],
+                                 "C_sources": [{"title": "Timer", "link": "https://ex.com/r1"}]}):
+            at9 = AppTest.from_file(_APP, default_timeout=60)
+            at9.session_state["lang"] = "zh"
+            at9.session_state["api_key_serp"] = "sk-serp-test"
+            at9.run()
+            assert not at9.exception, at9.exception
+            at9.radio(key="input_mode").set_value("手动输入").run()
+            at9.selectbox(key="scenario_select").set_value("RC 充电 (电学)").run()
+            b9 = [b for b in at9.button if "查常用元件值" in b.label]
+            assert b9, f"缺 rc 查参按钮: {[b.label for b in at9.button]}"
+            b9[0].click().run()
+            assert not at9.exception, f"rc 查参异常: {at9.exception}"
+            assert abs(at9.number_input(key="rc_R").value - 10e3) < 1e-6, "R 应被预填"
+            assert abs(at9.number_input(key="rc_C").value - 100e-6) < 1e-12, "C 应被预填"
+            print("7e) rc 查常用元件 ✅ R/C 预填")
+
+        # 7f) 新场景查参失败 → 回退内置典型值（info 提示），不崩
+        with patch("agent.serpapi.lookup_heat_material",
+                   side_effect=RuntimeError("API 不可达")):
+            at10 = AppTest.from_file(_APP, default_timeout=60)
+            at10.session_state["lang"] = "zh"
+            at10.run()
+            assert not at10.exception, at10.exception
+            at10.radio(key="input_mode").set_value("手动输入").run()
+            at10.selectbox(key="scenario_select").set_value("钢件冷却 (热处理)").run()
+            b10 = [b for b in at10.button if "查钢热扩散系数" in b.label][0]
+            b10.click().run()
+            assert not at10.exception, f"heat 查参失败异常: {at10.exception}"
+            infos10 = [i.value for i in at10.info]
+            assert any("内置典型值" in m for m in infos10), f"应回退内置值: {infos10}"
+            print("7f) 新场景查参失败 ✅ 回退内置典型值")
+
         print("SMOKE ALL OK")
     finally:
         cleanup()
