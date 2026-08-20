@@ -311,3 +311,45 @@ def test_lookup_vessel_material_no_consensus(monkeypatch):
     monkeypatch.setattr(serpapi, "search", lambda q, api_key=None, num=5: fake)
     out = serpapi.lookup_vessel_material(api_key="k")
     assert out["sigma_allow"] is None and out["sigma_allow_sources"] == []
+
+
+# ---------------- search 重试 + 超时放宽 ----------------
+
+class _FakeResp:
+    def __init__(self, payload):
+        self._payload = payload
+    def raise_for_status(self):
+        pass
+    def json(self):
+        return self._payload
+
+
+def test_search_retries_once_on_timeout(monkeypatch):
+    """首次请求超时 → 自动重试一次 → 返回结果。"""
+    import requests as _requests
+    calls = {"n": 0}
+    def fake_get(url, params, timeout):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _requests.exceptions.Timeout("first timeout")
+        return _FakeResp({"organic_results": [
+            {"title": "T", "snippet": "S", "link": "L"}]})
+    monkeypatch.setattr(serpapi.requests, "get", fake_get)
+    monkeypatch.setenv("SERPAPI_KEY", "k")
+    out = serpapi.search("steel E")
+    assert calls["n"] == 2
+    assert out == [{"title": "T", "snippet": "S", "link": "L"}]
+
+
+def test_search_gives_up_after_two_failures(monkeypatch):
+    """两次都超时 → 抛原始异常（调用方兜底回退内置值）。"""
+    import requests as _requests
+    calls = {"n": 0}
+    def fake_get(url, params, timeout):
+        calls["n"] += 1
+        raise _requests.exceptions.Timeout("always")
+    monkeypatch.setattr(serpapi.requests, "get", fake_get)
+    monkeypatch.setenv("SERPAPI_KEY", "k")
+    with pytest.raises(_requests.exceptions.Timeout):
+        serpapi.search("steel E")
+    assert calls["n"] == 2

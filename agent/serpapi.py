@@ -16,21 +16,28 @@ import requests
 
 
 def search(query: str, api_key: str | None = None, num: int = 3) -> list[dict]:
-    """搜索并返回前 num 条结果 [{title, snippet, link}]。缺 key 抛 ValueError。"""
+    """搜索并返回前 num 条结果 [{title, snippet, link}]。缺 key 抛 ValueError。
+
+    网络抖动/限流时重试一次，超时放宽到 12s —— 查参是演示关键链路，
+    一次偶发超时不应让整个场景退回内置值（C5 深度工作流的可靠性保障）。
+    """
     key = api_key or os.environ.get("SERPAPI_KEY")
     if not key:
         raise ValueError("缺少 SERPAPI_KEY（环境变量或参数）")
-    resp = requests.get(
-        "https://serpapi.com/search.json",
-        params={"engine": "google", "q": query, "api_key": key, "num": num},
-        timeout=8,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    return [
-        {"title": it.get("title", ""), "snippet": it.get("snippet", ""), "link": it.get("link", "")}
-        for it in data.get("organic_results", [])[:num]
-    ]
+    params = {"engine": "google", "q": query, "api_key": key, "num": num}
+    last_err: Exception | None = None
+    for attempt in range(2):
+        try:
+            resp = requests.get("https://serpapi.com/search.json", params=params, timeout=12)
+            resp.raise_for_status()
+            data = resp.json()
+            return [
+                {"title": it.get("title", ""), "snippet": it.get("snippet", ""), "link": it.get("link", "")}
+                for it in data.get("organic_results", [])[:num]
+            ]
+        except requests.RequestException as e:  # 超时 / 连接失败 / 5xx → 重试一次
+            last_err = e
+    raise last_err if last_err else RuntimeError("SerpApi search failed")
 
 
 # ---------------------------------------------------------------------------
