@@ -31,21 +31,6 @@ Keys are pre-configured on the live demo, so AI parsing + SerpApi parameter look
 | RC Circuit (Electrical) | Analytical exact solution |
 | Pipe Flow (Fluid) | ASME / engineering handbooks |
 
-## What the AI does (judges' focus)
-
-1. **Understands**: one sentence (Chinese or English) → detects the scenario + extracts parameters (few-shot)
-2. **Recommends**: fills in the key parameters you didn't mention with engineering defaults, one click to accept
-3. **Never computes**: every number comes from scipy solvers, cross-checked against MATLAB / ASME baselines
-4. **Traceable**: the result panel marks every parameter as "you provided" vs "default used"; AI interpretation wraps up in plain language
-
-## Architecture
-
-app.py (orchestration) → agent/llm.py (language → JSON) + agent/serpapi.py (parameter lookup) → engine/*.py (pure numerics) → charts + data + interpretation
-
-## Tests
-
-190 unit tests + an AppTest smoke suite that drives the actual Streamlit UI in both languages.
-
 ## Competition
 
-DevNetwork [API + Cloud + AI] Hackathon 2026 · submitted for SerpApi Best AI Use Case + Overall Winner
+DevNetwork [API + Cloud + AI] Hackathon 2026
