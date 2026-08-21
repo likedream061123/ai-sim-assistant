@@ -19,8 +19,18 @@ from pathlib import Path
 import matplotlib
 # 统一图表主题（所有引擎图共享，深色底 + 主题色板 —— 引擎图一出生就是深色，
 # _darkfig 只做渲染层兜底，避免「白底创建 → 显示时再改色」的两段式不一致）
+_FONT_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
+_bundled = sorted(_FONT_DIR.glob("*.otf")) if _FONT_DIR.exists() else []
+if _bundled:
+    # 打包的开源中文字体（Noto Sans SC，OFL 许可）—— Linux 部署（魔搭/Streamlit Cloud）
+    # 没有 Windows 雅黑/黑体，中文图表靠它保证零方块。重复 addfont 幂等。
+    import matplotlib.font_manager as _fm
+    for _f in _bundled:
+        _fm.fontManager.addfont(str(_f))
 matplotlib.rcParams.update({
-    "font.sans-serif": ["Microsoft YaHei", "SimHei", "DejaVu Sans"],  # 雅黑自带中英文字形（3.9 无逐字形回退，放第一最稳）
+    "font.sans-serif": ["Microsoft YaHei", "SimHei", "Noto Sans SC",
+                        "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei",
+                        "DejaVu Sans"],  # Windows: 雅黑/黑体；打包: Noto SC；都无则 DejaVu（英文界面不受影响）
     "axes.unicode_minus": False,
     "figure.facecolor": "#0B1229",       # 图表深蓝底（与页面背景 #05091A 一脉相承）
     "axes.facecolor": "#0B1229",
