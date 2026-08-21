@@ -1,0 +1,9 @@
+# 版本下限：跑通本项目用到的最小版本（评委环境不会因太新跑不起来）
+# st.iframe 需 1.49+，st.fragment 需 1.37+；实测环境 1.61
+streamlit>=1.49,<2
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+openai>=1.0
+requests>=2.28
+pytest>=7.0
