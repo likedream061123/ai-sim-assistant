@@ -8,7 +8,7 @@ Describe an engineering problem in plain language → the AI extracts the parame
 
 ## 🚀 Live Demo
 
-**[https://ai-sim-assistant-9bbndox8o9sxkm4avdxhpk.streamlit.app/](https://ai-sim-assistant-9bbndox8o9sxkm4avdxhpk.streamlit.app/)** — deployed on Streamlit Community Cloud. Works fully without any API key (manual mode + built-in offline NL matcher); with keys in the app's "API Settings" you get AI parsing + live SerpApi parameter lookup.
+**[https://www.modelscope.cn/studios/likedream/ai-sim-assistant/](https://www.modelscope.cn/studios/likedream/ai-sim-assistant/)** — deployed on ModelScope Studio (no login needed). Works fully without any API key (manual mode + built-in offline NL matcher); with keys in the app's "API Settings" you get AI parsing + live SerpApi parameter lookup.
 
 ## Scenarios (6, across four engineering domains)
 
@@ -64,7 +64,7 @@ app.py (orchestration) → agent/llm.py (language → JSON) + agent/serpapi.py (
 python -m pytest tests/ -v
 ```
 
-184 unit tests (parameter extractors, six engine kernels, E2E, offline fallback) + an AppTest smoke suite that drives the actual Streamlit UI in both languages — CI runs them on every push.
+190 unit tests (parameter extractors, six engine kernels, E2E, offline fallback) + an AppTest smoke suite that drives the actual Streamlit UI in both languages — CI runs them on every push.
 
 ## Competition
 

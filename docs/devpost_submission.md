@@ -16,7 +16,7 @@ Describe an engineering problem in plain language — the AI extracts the parame
 
 An engineer-facing tool where **the numbers are never guessed**. You type "a 4 m steel beam, 10 kN at 1.5 m — what's the max deflection?" The LLM only *understands* the question and extracts parameters; scipy solvers do the actual math, cross-checked against MATLAB / ASME baselines. Missing a parameter? The AI proposes an engineering default and you accept it in one click. Over the limit? It tells you which parameter to change and applies the fix for you. Every number is traceable to its source.
 
-**🔗 Try it live:** https://ai-sim-assistant-9bbndox8o9sxkm4avdxhpk.streamlit.app/ — runs fully key-free (manual mode + offline NL matcher); with a key in the sidebar you get AI parsing + live SerpApi parameter lookup.
+**🔗 Try it live:** https://www.modelscope.cn/studios/likedream/ai-sim-assistant/ — runs fully key-free (manual mode + offline NL matcher); keys are pre-configured on the live demo so AI parsing + SerpApi lookup work out of the box.
 
 ## Inspiration
 
@@ -44,7 +44,7 @@ Streamlit frontend orchestrating a pipeline: an OpenAI-compatible LLM layer (Dee
 ## Accomplishments that we're proud of
 
 - The "sensitivity tornado" — a real designer's view: change inertia I ±10% and see the deflection swing, so users learn *which* parameter matters instead of blind trial-and-error.
-- The whole product is testable headlessly: 184 unit tests + an AppTest smoke suite that drives the actual Streamlit UI (manual mode, natural-language mode with mocked LLM, history, export, SerpApi lookup, extreme-input guard) in both languages.
+- The whole product is testable headlessly: 190 unit tests + an AppTest smoke suite that drives the actual Streamlit UI (manual mode, natural-language mode with mocked LLM, history, export, SerpApi lookup, extreme-input guard) in both languages.
 
 ## What we learned
 
