@@ -75,7 +75,17 @@ def _browser_lang() -> str:
         return "en"
 
 
-set_lang(st.session_state.get("lang") or _browser_lang())
+# 语言优先级：?lang= URL 参数 > 侧边栏选择 > 浏览器 Accept-Language 自动检测。
+# query param 让评审/演示可用链接固定语言（如 ?lang=en），也方便截英文界面图。
+_QUERY_LANG = ""
+try:
+    _ql = st.query_params.get("lang")
+    _QUERY_LANG = _ql[0] if isinstance(_ql, list) else _ql
+except Exception:
+    _QUERY_LANG = ""
+if _QUERY_LANG not in ("en", "zh"):
+    _QUERY_LANG = ""
+set_lang(_QUERY_LANG or st.session_state.get("lang") or _browser_lang())
 # set_page_config 必须是第一个 Streamlit 命令（layout=wide 与 favicon 在此生效）
 st.set_page_config(page_title=tr("AI 工程仿真助手"), page_icon="assets/favicon.svg", layout="wide")
 

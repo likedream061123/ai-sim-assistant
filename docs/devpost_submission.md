@@ -4,6 +4,19 @@ Copy these sections into your Devpost submission. The app UI, README, and demo s
 
 ---
 
+## Screenshots (upload these to the Devpost media gallery)
+
+| File | What it shows |
+|------|---------------|
+| `shot_devpost_1_home.png` | Landing — tagline, three trust badges ("Computed by scipy — never guessed" / "Live params via SerpApi" / "Verified vs MATLAB / ASME"), natural-language input, six scenario cards |
+| `shot_devpost_2_result.png` | Solve results — trajectory chart + key metrics for the pendulum question "1 m pendulum from 120°, period & energy" |
+| `shot_devpost_3_traceability.png` | Traceability panel — every parameter labelled "you provided" vs "engineering default" |
+| `shot_devpost_4_interpretation.png` | Plain-English AI interpretation of the computed numbers (2.25 s period, energy loss flagged) |
+| `shot_devpost_5_sensitivity.png` | Sensitivity tornado — which parameter moves the result most (L vs T) + one-click design fix |
+| `shot_devpost_6_manual.png` | Manual mode — parameter form that computes without any API key |
+
+---
+
 ## Project name
 
 AI Engineering Simulation Assistant

@@ -124,18 +124,23 @@ def explain(scenario: str, data: dict, api_key: str | None = None,
         sys_prompt = (
             "You are an engineering simulation assistant. Explain the result of a "
             "calculation in plain English, at most 80 words, for a non-expert user. "
-            "Say clearly: what the result is, whether it is reasonable, and what to watch out for."
+            "Say clearly: what the result is, whether it is reasonable, and what to watch out for. "
+            "Always answer in English."
         )
+        user_content = (f"Scenario: {scenario}. Key computed values: "
+                        f"{json.dumps(data, ensure_ascii=False)}. "
+                        f"Explain in English.")
     else:
         sys_prompt = (
             "你是工程仿真助手，用不超过80字的大白话解释一次计算的结果。"
             "面向非专业用户，说清楚'结果是什么、合理吗、要注意什么'。"
         )
+        user_content = f"场景={scenario}，关键数据={json.dumps(data, ensure_ascii=False)}"
     try:
         resp = _client(api_key, provider).chat.completions.create(
             model=cfg["model"],
             messages=[{"role": "system", "content": sys_prompt},
-                      {"role": "user", "content": f"场景={scenario}，关键数据={json.dumps(data, ensure_ascii=False)}"}],
+                      {"role": "user", "content": user_content}],
             temperature=0.3,
         )
         return resp.choices[0].message.content
