@@ -6,3 +6,6 @@ __pycache__/
 .streamlit/secrets.toml
 .streamlit/local_keys.json
 .streamlit/history.json
+
+# 部署打包产物
+dist/
