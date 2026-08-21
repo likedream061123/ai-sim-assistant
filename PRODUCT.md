@@ -50,10 +50,17 @@ LLM 只做"人话→参数"翻译，**绝不参与计算**——数值由 scipy 
 
 ## Evidence on Hand
 
+<<<<<<< HEAD
 - 测试 190 passed（MATLAB 基准断言：beam v_max=1.2265e-4 @1.859m、M_max=9375N·m；heat 中心 872.5s；pendulum T_ratio>1）+ AppTest 冒烟（手动/自然语言/降级/溯源/导出/历史全过，双语）。
 - docs/demo_script.md、README.md、devpost_submission.md 已写。
 - 真实 key 已验证：DeepSeek 解析 + SerpApi 查参（beam σ_allow→103MPa 多源共识、heat α=1.65e-05）均线上跑通。
 - 已部署 ModelScope（魔搭）：https://www.modelscope.cn/studios/likedream/ai-sim-assistant（无登录，评审可访问）。
+=======
+- 测试 29 passed（MATLAB 基准断言：beam v_max=1.2265e-4 @1.859m、M_max=9375N·m；heat 中心 872.5s；pendulum T_ratio>1）。
+- AppTest 冒烟：四场景手动 + 自然语言降级 + 溯源 + SerpApi 降级全过。
+- docs/demo_script.md、README.md 已写。
+- 尚无真实 API key：LLM 解析/解读均为 mock 影子验收，未跑真 LLM。
+>>>>>>> modelscope/master
 
 ## Product Principles
 
