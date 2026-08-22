@@ -370,6 +370,33 @@ _EN: dict[str, str] = {
     "聚合多开源模型": "Aggregates open-source models",
     # ================= design.py 图轴 label 模板 =================
     "{0}（{1}）": "{0} ({1})",
+    # ================= 验证对照卡（result 区） =================
+    "数值已验证": "Numerically verified",
+    "验证基准": "Baseline",
+    "偏差": "Deviation",
+    "同内核一致": "Matches MATLAB core",
+    "最大挠度": "Max deflection",
+    "所需壁厚": "Required wall thickness",
+    "充到目标电压用时": "Time to target voltage",
+    "沿程压降": "Pressure drop",
+    "周期 T": "Period T",
+    "周期比 T/T₀": "Period ratio T/T₀",
+    "中心冷却到目标温度": "Center cooling time",
+    "物理断言": "Physics check",
+    "符合物理": "Physically consistent",
+    "偏离物理": "Physically implausible",
+    "结论": "Conclusion",
+    "MATLAB `beam_deflection.m` 分段解析积分": "MATLAB `beam_deflection.m` analytic integral",
+    "ASME 薄壁公式 t = PD/(2σ)": "ASME thin-wall formula t = PD/(2σ)",
+    "教科书解析解 t = -τ·ln(1-p%)": "Textbook solution t = -τ·ln(1-p%)",
+    "Darcy-Weisbach + Colebrook": "Darcy-Weisbach + Colebrook",
+    "大角度周期级数 T0(1+θ²/16+11θ⁴/3072)": "Large-angle period series T0(1+θ²/16+11θ⁴/3072)",
+    "大角度周期变长：θ₀=120° → T/T₀ ≈ 1.12，符合物理": "Large-angle period lengthens: θ₀=120° → T/T₀ ≈ 1.12, matches physics",
+    "MATLAB `heat1d_explicit.m` 同显式差分内核": "Same explicit FDM core as MATLAB `heat1d_explicit.m`",
+    "基准对应默认参数（L=4m、P=10kN、a=1.5m）": "Baseline is for default params (L=4m, P=10kN, a=1.5m)",
+    # ================= 复现链接（share URL） =================
+    "🔗 复现此结果": "🔗 Reproduce this result",
+    "打开链接即带入相同参数与场景，一键重现计算：": "Open the link and the same scenario & parameters are pre-filled — recompute in one click:",
 }
 
 

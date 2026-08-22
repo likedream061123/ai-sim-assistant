@@ -10,6 +10,15 @@ Describe an engineering problem in plain language → the AI extracts the parame
 
 **[https://www.modelscope.cn/studios/likedream/ai-sim-assistant/](https://www.modelscope.cn/studios/likedream/ai-sim-assistant/)** — deployed on ModelScope Studio (no login needed). Works fully without any API key (manual mode + built-in offline NL matcher); with keys in the app's "API Settings" you get AI parsing + live SerpApi parameter lookup.
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Landing](docs/shot_devpost_1_home.png) | ![Results + verification card](docs/shot_verify_pendulum.png) |
+| Landing — natural-language input, six scenario cards, trust badges | Result — chart + metrics, and the live **verification card**: current result vs baseline, ✓/≈/⚠ deviation |
+| ![Traceability](docs/shot_devpost_3_traceability.png) | ![Sensitivity tornado](docs/shot_devpost_5_sensitivity.png) |
+| Every parameter labelled "you provided" vs "engineering default" | Sensitivity tornado — which parameter moves the result most, one-click fix |
+
 ## Scenarios (6, across four engineering domains)
 
 | Scenario | Verification baseline |
@@ -56,7 +65,33 @@ For five of the six scenarios, one click searches the web for **real engineering
 
 ## Architecture
 
-app.py (orchestration) → agent/llm.py (language → JSON) + agent/serpapi.py (parameter lookup) → engine/*.py (pure numerics) → charts + data + interpretation
+```
+Natural-language question (EN / 中文)
+        │
+        ▼
+agent/llm.py ── OpenAI-compatible LLM (DeepSeek / OpenAI / Qwen / Kimi / GLM / SiliconFlow)
+        │         few-shot prompt → strict JSON {scenario, params, engineering defaults}
+        │         (no key / no network → built-in offline rule matcher, same JSON)
+        ▼
+agent/serpapi.py ── live engineering values (steel E/I, thermal diffusivity, pipe roughness, RC parts, allowable stress)
+        │         cross-checked multi-source consensus → prefilled inputs + source links
+        │         (missing key / no consensus → graceful fallback to built-in typical values)
+        ▼
+engine/*.py ── pure numpy/scipy solvers — the LLM never touches a number
+        │         pendulum · heat · beam · vessel · rc_circuit · pipe_flow
+        ▼
+Charts (matplotlib, dark theme) + key metrics + parameter traceability
+        + AI plain-language interpretation (agent/llm.py explain)
+        + verification card: current result vs MATLAB / ASME baseline, live deviation
+```
+
+**The boundary is the point.** Language and math are separated: the LLM understands intent and explains results, but every number is a deterministic scipy solve — so the hallucination risk is bounded to parameter extraction (where LLMs are excellent), while the arithmetic stays verifiable against a stated baseline.
+
+## [API + Cloud + AI] — mapped to the theme
+
+- **API** — the product *is* an API showcase end-to-end: six interchangeable OpenAI-compatible LLM APIs do language→JSON parsing + explanation; SerpApi does live web parameter lookup. A dropdown swaps the provider, and each API's contribution is visible in the UI (source links, provider config).
+- **Cloud** — live on ModelScope Studio (cloud-hosted, URL-accessible, no login, no install); SerpApi lookups run server-side against the live web; GitHub Actions CI verifies every push.
+- **AI** — the LLM is scoped to what it's great at (intent, parameter extraction, engineering-default recommendation, plain-language explanation) and deliberately barred from arithmetic. That division of labor — and the verification card that proves the numbers were computed, not guessed — is the project's core idea.
 
 ## Tests
 

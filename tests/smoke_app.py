@@ -92,6 +92,40 @@ def _main() -> None:
         assert any("充到目标时间" in m.label for m in at_r2.metric), "RC 结果卡缺数据"
         print("1c) RC 手动计算 ✅")
 
+        # 1d) 验证对照卡：pendulum relation 模式（物理断言 >1）+ beam default_bench 模式
+        for label, expect in [
+            ("单摆 (动力学)", "物理断言"),      # relation: 周期比 >1 ✓
+            ("钢梁挠度 (结构校核)", "验证基准"),  # default_bench: 本结果 vs 基准
+        ]:
+            at_v = AppTest.from_file(_APP, default_timeout=60)
+            at_v.session_state["lang"] = "zh"
+            at_v.run()
+            assert not at_v.exception, at_v.exception
+            at_v.radio(key="input_mode").set_value("手动输入").run()
+            at_v.selectbox(key="scenario_select").set_value(label).run()
+            at_v.button(key="calc_go").click().run()
+            assert not at_v.exception, f"{label} 验证卡异常: {at_v.exception}"
+            m_lbls = [m.label for m in at_v.metric]
+            assert any(expect in l for l in m_lbls), f"{label} 缺验证卡: {m_lbls}"
+            body = "\n".join(x.value for x in at_v.markdown)
+            assert "数值已验证" in body, f"{label} 缺验证标题: {body[:200]}"
+            print(f"1d) {label} 验证卡 ✅ ({expect})")
+
+        # 1e) 复现链接：?scenario=beam&L=4&P=10000 … 打开 → 自动切手动 + 预填参数
+        at_sh = AppTest.from_file(_APP, default_timeout=60)
+        at_sh.session_state["lang"] = "zh"
+        at_sh.query_params["scenario"] = "beam"
+        at_sh.query_params["L"] = "4"
+        at_sh.query_params["P"] = "10000"
+        at_sh.run()
+        assert not at_sh.exception, f"复现链接异常: {at_sh.exception}"
+        assert at_sh.session_state["input_mode"] == "手动输入", "应切到手动输入"
+        assert at_sh.session_state["scenario_select"] == "钢梁挠度 (结构校核)", \
+            f"场景应预选 beam: {at_sh.session_state.get('scenario_select')}"
+        assert abs(at_sh.number_input(key="beam_L").value - 4.0) < 1e-9, "beam_L 应预填 4"
+        assert abs(at_sh.number_input(key="beam_P").value - 10000.0) < 1e-3, "beam_P 应预填 10000"
+        print("1e) 复现链接预填 ✅ ?scenario=beam&L=4&P=10000 → 手动+参数落位")
+
         # 2) 自然语言（mock agent.llm；provider 用本地记住的默认 → 塞同商 key）
         _prov = _default_provider()
         with patch("agent.llm.parse_query",
